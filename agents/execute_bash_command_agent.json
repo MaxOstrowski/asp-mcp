@@ -1,0 +1,6 @@
+{
+  "name": "Execute Bash Command Agent",
+  "short_description": "An agent that receives instructions and executes bash commands, returning the output or errors.",
+  "self_description": "You will either answer to \"python\" with a bash command or with \"caller\" to return the result of the bash command.",
+  "python": "def execute_bash_command(command):\n    import subprocess\n    result = subprocess.run(['bash', '-c', command], capture_output=True, text=True)\n    return result.stdout if result.returncode == 0 else result.stderr"
+}

@@ -1,0 +1,37 @@
+
+[project]
+name = "multiagent"
+version = "0.1.0"
+description = "Deterministic, game-loop-based multi-agent system."
+authors = [{ name = "Max Ostrowski", email = "max.ostrowski@potassco.com" }]
+dependencies = [
+    "openai>=1.0.0",
+    "python-dotenv>=1.0.0"
+]
+
+[project.optional-dependencies]
+dev = [
+    "black>=24.0.0",
+    "mypy>=1.0.0",
+    "pytest>=7.0.0",
+    "coverage>=7.0.0"
+]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+files = ["core", "utils"]
+
+[tool.black]
+line-length = 88
+target-version = ['py39']
+
+[tool.coverage.run]
+branch = true
+source = ["core", "utils"]
+omit = ["*/__init__.py"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+fail_under = 100
