@@ -27,11 +27,21 @@ class LLM():
             api_key=self.api_key,
         )
 
-    def ask(self, msg: str) -> str:
+    def ask(self, msg: str) -> dict:
         # Add user message to history
         self.history.append({"role": "user", "content": msg})
         answer = self.generate_response()
-        return eval(answer)
+        try:
+            return eval(answer)
+        except Exception as e:
+            return {
+                "messages" : [
+                    {
+                        "recipient": "self",
+                        "content": f"[Error evaluating response: {e} - {answer}]"
+                    }
+                ]
+            }
 
     def generate_response(self) -> str:
         try:
@@ -47,6 +57,6 @@ class LLM():
             content = response.choices[0].message.content
             # Add assistant response to history
             self.history.append({"role": "assistant", "content": content})
-            return content
+            return str(content)
         except Exception as e:
             return f"[LLM error: {e}]"
