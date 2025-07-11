@@ -1,18 +1,22 @@
-def execute_bash_command(command: str) -> str:
-    """ 
-    Execute a bash command securely and return structured output.
-    Bash scripts do not handle quotes and special characters very well, maybe use python for this.
+def execute_python_code(code: str) -> str:
+    """
+    Execute a Python code string securely and return structured output.
     Output includes stdout, stderr, return code, and a success flag.
     """
-    import subprocess, json, tempfile, os
+    import subprocess, json, tempfile, os, sys
     script_path = None
     try:
-        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.sh') as f:
-            f.write(command)
-            script_path = f.name       
+        with tempfile.NamedTemporaryFile(mode='w', delete=False, suffix='.py') as f:
+            f.write(code)
+            script_path = f.name
+        # Optionally print content of the script for debugging
+        # with open(script_path, 'r') as f:
+        #     print(f"Executing Python script:\n{f.read()}")
 
-        result = subprocess.run(['bash', script_path],
-            capture_output=True, text=True, errors='replace', timeout=10)
+        result = subprocess.run(
+            [sys.executable, script_path],
+            capture_output=True, text=True, errors='replace', timeout=10
+        )
         output = {
             'stdout': result.stdout,
             'stderr': result.stderr,
@@ -37,10 +41,3 @@ def execute_bash_command(command: str) -> str:
         if script_path is not None and os.path.exists(script_path):
             os.unlink(script_path)
     return json.dumps(output)
-
-#def execute_bash_command(command: str) -> str:
-#    """Execute a bash command and return the output."""
-#    import subprocess
-#    result = subprocess.run(['bash', '-c', command], capture_output=True, text=True, errors='replace')
-#    return result.stdout if result.returncode == 0 else result.stderr
-

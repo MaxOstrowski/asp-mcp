@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 import os
+import logging
 from core.llm import LLM
 from utils.json_utils import load_json
 from typing import Dict
@@ -16,6 +17,7 @@ You shall reason with logic and ensure that you have completed the given task.
 You are encouraged to plan and structure your responses,
 asking yourself intermediate questions that lead to the end result. You will get called again with your plan.
 Do not repeat yourself too much, do not use stubs or placeholders.
+Always check your work before you finish.
 
 You output only in json format, sending messages and status information.
 {
@@ -49,8 +51,11 @@ class PythonFunction:
     function: callable
 
 
+
 class Agent:
     def __init__(self, agent_name: str):
+        # Set up logger for this class
+        self.logger = logging.getLogger(f"Agent.{agent_name}")
         python_functions: list[PythonFunction] = load_python_functions(CODE_DIR)
 
         description = AGENT_DESCRIPTION
@@ -62,25 +67,25 @@ class Agent:
         self.python_func = {func.name: func.function for func in python_functions}
 
    
+
     def ask(self, msg: str) -> str:
         # Default: echo if possible
         messages_to_self = [msg]
-        num_old_messages = 0
-        while (len(messages_to_self) > num_old_messages):
-            num_old_messages = len(messages_to_self)
+        messages_to_caller = []
+        while messages_to_self:
             answer = self.llm.ask(str(messages_to_self))
-            messages_to_caller = []
+            messages_to_self.clear()
             for key, value in answer.items():
                 if key == "messages":
                     for m in value:
-                        recipient = m["recipient"] 
+                        recipient = m["recipient"]
                         content = str(m["content"])
                         if recipient == "self":
                             messages_to_self.append(content)
                         elif recipient == "caller":
                             messages_to_caller.append(content)
                         elif recipient == "python":
-                            print(f"Calling python_func with: {repr(content)}")
+                            self.logger.warning(f"Calling python_func with: {repr(content)}")
                             try:
                                 response = eval(content, self.python_func)
                                 messages_to_self.append(response)
@@ -88,7 +93,35 @@ class Agent:
                                 messages_to_self.append(f"[Error evaluating python function: {e} - {content}]")
                         else:
                             raise ValueError(f"Unknown recipient: {recipient}")
+            # log new messages to self
+            for msg in messages_to_self:
+                self.logger.info(f"Message to self: {msg}")
         return str(messages_to_caller)
+def setup_logging():
+    import sys
+    class ColorFormatter(logging.Formatter):
+        # ANSI escape codes
+        DARK_GREEN = '\033[32m'
+        RED = '\033[31m'
+        RESET = '\033[0m'
+        def format(self, record):
+            msg = super().format(record)
+            if record.levelno == logging.WARNING:
+                return f"{self.RED}{msg}{self.RESET}"
+            elif record.levelno == logging.INFO:
+                return f"{self.DARK_GREEN}{msg}{self.RESET}"
+            return msg
+
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setLevel(logging.INFO)
+    handler.setFormatter(ColorFormatter("[%(levelname)s] %(name)s: %(message)s"))
+    logging.basicConfig(level=logging.INFO, handlers=[handler], force=True)
+
+    # Suppress logs from external libraries (e.g., openai)
+    logging.getLogger("openai").setLevel(logging.WARNING)
+    logging.getLogger("httpx").setLevel(logging.WARNING)
+    logging.getLogger("urllib3").setLevel(logging.WARNING)
+    logging.getLogger("requests").setLevel(logging.WARNING)
 
     def __repr__(self):
         return f"<Agent {self.name}: {self.short_description}>"
