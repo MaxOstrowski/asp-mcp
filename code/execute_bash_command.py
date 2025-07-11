@@ -36,6 +36,14 @@ def execute_bash_command(command: str) -> str:
     finally:
         if script_path is not None and os.path.exists(script_path):
             os.unlink(script_path)
+    try:
+        return json.dumps(output, indent=2)
+    except TypeError:
+        # Fallback if json.dumps fails, return a simple string representation
+        output['success'] = False
+        output['stderr'] = 'Failed to serialize output to JSON'
+        output['stdout'] = ""
+        output['returncode'] = ""
     return json.dumps(output)
 
 #def execute_bash_command(command: str) -> str:

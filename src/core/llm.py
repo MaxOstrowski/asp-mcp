@@ -27,9 +27,19 @@ class LLM():
             api_key=self.api_key,
         )
 
-    def ask(self, msg: str) -> dict:
+    def clear_history(self):
+        """Clear the conversation history."""
+        self.history = [{"role": "system", "content": self.initial_prompt}]
+
+    def ask(self, messages: list[str, str]) -> dict:
         # Add user message to history
-        self.history.append({"role": "user", "content": msg})
+        for m, role in messages:
+            if role not in ["user", "assistant", "system", "tool"]:
+                raise ValueError(f"Invalid role: {role}. Must be 'user', 'assistant', 'system', or 'tool'.")
+            msg = {"role": role, "content": m}
+            self.history.append(msg)
+        
+        # Generate response
         answer = self.generate_response()
         try:
             return eval(answer)

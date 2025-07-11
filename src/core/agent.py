@@ -17,7 +17,7 @@ You shall reason with logic and ensure that you have completed the given task.
 You are encouraged to plan and structure your responses,
 asking yourself intermediate questions that lead to the end result. You will get called again with your plan.
 Do not repeat yourself too much, do not use stubs or placeholders.
-Always check your work before you finish.
+ALWAYS CHECK the result of your work before you finish!
 
 You output only in json format, sending messages and status information.
 {
@@ -34,6 +34,7 @@ RECIPIENT is the target to send the message to.
 The only valid targets are:
 - "self": send the message to yourself, you will be called again with this message.
 - "caller": send the message to the agent that called you
+- "clear": ignore content and clears your history, should be requested by the user
 - "python": the message contains an evaluatable python expression, maybe containing the available functions.
 
 The following python functions are available:
@@ -70,10 +71,10 @@ class Agent:
 
     def ask(self, msg: str) -> str:
         # Default: echo if possible
-        messages_to_self = [msg]
+        messages_to_self = [(msg, "user")]
         messages_to_caller = []
         while messages_to_self:
-            answer = self.llm.ask(str(messages_to_self))
+            answer = self.llm.ask(messages_to_self)
             messages_to_self.clear()
             for key, value in answer.items():
                 if key == "messages":
@@ -81,18 +82,21 @@ class Agent:
                         recipient = m["recipient"]
                         content = str(m["content"])
                         if recipient == "self":
-                            messages_to_self.append(content)
+                            messages_to_self.append((content, "assistant"))
+                        elif recipient == "clear":
+                            self.llm.clear_history()
                         elif recipient == "caller":
                             messages_to_caller.append(content)
                         elif recipient == "python":
                             self.logger.warning(f"Calling python_func with: {repr(content)}")
                             try:
                                 response = eval(content, self.python_func)
-                                messages_to_self.append(response)
+                                messages_to_self.append((response, "assistant"))
                             except Exception as e:
-                                messages_to_self.append(f"[Error evaluating python function: {e} - {content}]")
+                                messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
                         else:
                             raise ValueError(f"Unknown recipient: {recipient}")
+                        
             # log new messages to self
             for msg in messages_to_self:
                 self.logger.info(f"Message to self: {msg}")
