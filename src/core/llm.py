@@ -31,7 +31,7 @@ class LLM():
         """Clear the conversation history."""
         self.history = [{"role": "system", "content": self.initial_prompt}]
 
-    def ask(self, messages: list[str, str]) -> dict:
+    def ask(self, messages: list[str, str]) -> str:
         # Add user message to history
         for m, role in messages:
             if role not in ["user", "assistant", "system", "tool"]:
@@ -42,16 +42,16 @@ class LLM():
         # Generate response
         answer = self.generate_response()
         try:
-            return eval(answer)
+            return answer
         except Exception as e:
-            return {
+            return str({
                 "messages" : [
                     {
                         "recipient": "self",
                         "content": f"[Error evaluating response: {e} - {answer}]"
                     }
                 ]
-            }
+            })
 
     def generate_response(self) -> str:
         try:

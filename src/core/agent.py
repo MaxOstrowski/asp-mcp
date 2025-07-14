@@ -6,15 +6,17 @@ import io
 import os
 import logging
 import sys
+
 from core.llm import LLM
 from utils.json_utils import load_json
-from typing import Dict
+from typing import  Optional
 
 AGENTS_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "agents"))
 CODE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "code"))
 
 AGENT_DESCRIPTION = """
 You are an agent in a multi agent system.
+Your name is __AGENT_NAME__ and your parents are: __PARENTS__.
 Your task is to execute tasks and answer questions.
 You shall reason with logic and ensure that you have completed the given task.
 You are encouraged to plan, subdivide any tasks and forward them to other agents.
@@ -23,15 +25,11 @@ Ask precise questions or given precise instructions to other agents.
 Do not repeat yourself too much, do not use stubs or placeholders.
 ALWAYS CHECK the result of your work before you finish!
 
-You output only in json format, sending messages and status information.
+You output only in json format, sending a single message and status information.
 {
-    "messages": [
-        {
-            "sender": "AGENT",
-            "recipient": RECIPIENT,
-            "content": CONTENT,
-        }
-    ],   
+    "sender": "AGENT",
+    "recipient": RECIPIENT,
+    "content": CONTENT,
 }
 
 AGENT is your agent name
@@ -46,6 +44,7 @@ Use other agents to delegate tasks, subdivide your problem into smaller tasks. D
 - "python_exec": the message contains a python code snippet to execute, it will be executed in a separate process and the output will be captured, may also contain the available functions
 
 The following python functions are available:
+___PYTHON_FUNCTIONS___
 
 """
 
@@ -64,17 +63,21 @@ class PythonFunction:
 class Agent:
     reset = '\033[0m'
 
-    def __init__(self, agent_name: str):
+    def __init__(self, agent_name: str, parent: Optional["Agent"] = None):
         # Set up logger for this class
         self.agent_name = agent_name  # Store agent name for coloring
+        self.parent = parent
         self.color = agent_color(self.agent_name)
 
         self.logger = logging.getLogger(f"Agent.{agent_name}")
         python_functions: list[PythonFunction] = load_python_functions(CODE_DIR)
 
         description = AGENT_DESCRIPTION
-        for py_func in python_functions:
-            description += f"\n{py_func.docstring}:\n {py_func.signature} END"
+        description = description.replace("__AGENT_NAME__", agent_name)
+        description = description.replace("__PARENTS__", self.long_name())
+        # Add available python functions to the description
+        description = description.replace("___PYTHON_FUNCTIONS___", "\n".join([f"{func.docstring}:\n {func.signature} END" for func in python_functions]))
+
         self.llm = LLM(description)  # Initialize LLM with description
 
         # create struct to be passed to eval to execute python functions
@@ -82,80 +85,93 @@ class Agent:
 
         self.agents: dict[str, Agent] = {}
 
+
+    def long_name(self) -> str:
+        """Return a long name for the agent including all parents."""
+        if self.parent:
+            return f"{self.parent.long_name()}.{self.color}{self.agent_name}{self.reset}"
+        return f"{self.color}{self.agent_name}{self.reset}"
+
    
 
     def ask(self, msg: str) -> str:
         # Default: echo if possible
-        messages_to_self = [(msg, "user")]
+        message_to_self = (msg, "user")
         messages_to_caller = []
         llm_finished = LLM("Given a task and an answer to the task, answer YES if question/task was accomplished, answer NO if not.")
         llm_finished_messages = [(msg, "user")]
+
+        llm_new_task = LLM("Compare the two given tasks and answer YES is the task is semantically different.")
+        llm_new_task_messages = [(msg, "user")]
         while True:
-            while messages_to_self:
-                answer = self.llm.ask(messages_to_self)
-                messages_to_self.clear()
-                for key, value in answer.items():
-                    if key == "messages":
-                        for m in value:
-                            recipient = m["recipient"]
-                            content = str(m["content"])
-                            if recipient == "self":
-                                messages_to_self.append((content, "assistant"))
-                            elif recipient == "clear":
-                                self.llm.clear_history()
-                            elif recipient == "caller":
-                                messages_to_caller.append(content)
-                            elif recipient == "python_eval":
-                                self.logger.warning(f"Calling python_eval with: {repr(content)}")
-                                try:
-                                    response = eval(content, self.python_func)
-                                    messages_to_self.append((response, "assistant"))
-                                except Exception as e:
-                                    messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
-                            elif recipient == "python_exec":
-                                self.logger.warning(f"Calling python_exec with: {repr(content)}")
-                                try:
-                                    stdout = io.StringIO()
-                                    stderr = io.StringIO()
-                                    old_stdout, old_stderr = sys.stdout, sys.stderr
-                                    sys.stdout, sys.stderr = stdout, stderr
-                                    try:
-                                        exec(content, self.python_func)
-                                    finally:
-                                        sys.stdout, sys.stderr = old_stdout, old_stderr
-                                    output = stdout.getvalue()
-                                    error = stderr.getvalue()
-                                    response = output if not error else f"{output}\n[stderr]: {error}"
-                                    messages_to_self.append((response, "assistant"))
-                                except Exception as e:
-                                    messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
-                            else:
-                                if not recipient.startswith("agent_"):
-                                    self.logger.warning(f"Unknown recipient: {recipient}")
-                                if agent.agent_name == recipient:
-                                    messages_to_self.append((content, "assistant"))
-                                else:
-                                    agent = self.agents.setdefault(recipient, Agent(recipient))
-                                    self.logger.info(f"{self.color}Forwarding message to {recipient}: {content}{self.reset}")
-                                    response = agent.ask(content)
-                                    messages_to_self.append((response, "assistant"))
-                # log new messages to self
-                for msg in messages_to_self:
-                    self.logger.info(f"{self.color}Message to self: {msg}{self.reset}")
-            
-            llm_finished_messages.extend(messages_to_caller)
+            while message_to_self:
+                answer_str = self.llm.ask([message_to_self])
+                message_to_self = None
+                while (True):
+                    try:
+                        answer = eval(answer_str)
+                        break
+                    except Exception as e:
+                        answer_str = self.llm.ask([("Please return a dictionary with the messages, error: " + str(e), "user")])
+                
+                recipient = answer["recipient"]
+                content = str(answer["content"])
+                if recipient == "self":
+                    message_to_self = (content, "assistant")
+                elif recipient == "clear":
+                    self.llm.clear_history()
+                elif recipient == "caller":
+                    messages_to_caller.append(content)
+                elif recipient == "python_eval":
+                    self.logger.warning(f"{self.color}Calling python_eval with: {repr(content)}{self.reset}")
+                    try:
+                        response = eval(content, self.python_func)
+                        message_to_self = (response, "assistant")
+                    except Exception as e:
+                        message_to_self = (f"{self.color}[Error evaluating python function: {e} - {content}]{self.reset}", "assistant")
+                elif recipient == "python_exec":
+                    self.logger.warning(f"{self.color}Calling python_exec with: {repr(content)}{self.reset}")
+                    try:
+                        stdout = io.StringIO()
+                        stderr = io.StringIO()
+                        old_stdout, old_stderr = sys.stdout, sys.stderr
+                        sys.stdout, sys.stderr = stdout, stderr
+                        try:
+                            exec(content, self.python_func)
+                        finally:
+                            sys.stdout, sys.stderr = old_stdout, old_stderr
+                        output = stdout.getvalue()
+                        error = stderr.getvalue()
+                        response = output if not error else f"{output}\n[stderr]: {error}"
+                        message_to_self = (response, "assistant")
+                    except Exception as e:
+                        message_to_self = (f"{self.color}[Error evaluating python function: {e} - {content}]{self.reset}", "assistant")
+                else:
+                    if self.agent_name == recipient:
+                        message_to_self = (content, "assistant")
+                    else:
+                        llm_new_task_messages.append((content, "user"))
+                        is_different = llm_new_task.ask(llm_new_task_messages)
+                        if "yes" in is_different.lower():
+                            agent = self.agents.setdefault(recipient, Agent(recipient))
+                            self.logger.info(f"{self.color}Forwarding message to {recipient}: {content}{self.reset}")
+                            response = agent.ask(content)
+                            message_to_self = (response, "assistant")
+                        else:
+                            message_to_self = (f"{self.color}Skipping message to {recipient} as it is not a new task. Do it yourself.{self.reset}", "user")
+                if message_to_self:
+                    self.logger.info(f"{self.color}Message to self: {message_to_self}{self.reset}")
+
+            llm_finished_messages.extend([(msg, "assistant") for msg in messages_to_caller])
             answer = llm_finished.ask(llm_finished_messages)
-            for key, value in answer.items():
-                    if key == "messages":
-                        for m in value:
-                            recipient = m["recipient"]
-                            content = str(m["content"])
-                            if content.lower() in ["yes", "y"]:
-                                self.logger.info(f"{self.color}Task accomplished, returning to caller.{self.reset}")
-                                return str(messages_to_caller)
-            msg = "Try harder and find answers yourself. Make a plan, use the internet, delegate tasks."
+          
+            if "yes" in answer.lower():
+                self.logger.info(f"{self.color}Task accomplished, returning to caller.{self.reset}")
+                return str(messages_to_caller)
+            msg = "The task is not complete. Try harder and find answers yourself. Make a plan, use the internet, delegate tasks."
+            msg += " Dont go in circles."
             self.logger.info(f"{self.color}Adding message to self: {msg}{self.reset}")
-            messages_to_self.append((msg, "user"))
+            message_to_self = (msg, "user")
 
         #return str(messages_to_caller)
     
