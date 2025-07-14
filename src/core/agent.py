@@ -1,8 +1,10 @@
 """ Agent class and loader """
 
 from dataclasses import dataclass
+import io
 import os
 import logging
+import sys
 from core.llm import LLM
 from utils.json_utils import load_json
 from typing import Dict
@@ -33,9 +35,12 @@ CONTENT is the message to send to the recipient.
 RECIPIENT is the target to send the message to.
 The only valid targets are:
 - "self": send the message to yourself, you will be called again with this message.
+- "agent_XXX": where XXX is the name of another agent, you can send a message to another agent, it will be called with this message.
+Use other agents to delegate tasks, subdivide your problem into smaller tasks.
 - "caller": send the message to the agent that called you
 - "clear": ignore content and clears your history, should be requested by the user
-- "python": the message contains an evaluatable python expression, maybe containing the available functions.
+- "python_eval": the message contains an evaluatable python expression, maybe containing the available functions
+- "python_exec": the message contains a python code snippet to execute, it will be executed in a separate process and the output will be captured, may also contain the available functions
 
 The following python functions are available:
 
@@ -67,6 +72,8 @@ class Agent:
         # create struct to be passed to eval to execute python functions
         self.python_func = {func.name: func.function for func in python_functions}
 
+        self.agents: dict[str, Agent] = {}
+
    
 
     def ask(self, msg: str) -> str:
@@ -87,20 +94,47 @@ class Agent:
                             self.llm.clear_history()
                         elif recipient == "caller":
                             messages_to_caller.append(content)
-                        elif recipient == "python":
-                            self.logger.warning(f"Calling python_func with: {repr(content)}")
+                        elif recipient == "python_eval":
+                            self.logger.warning(f"Calling python_eval with: {repr(content)}")
                             try:
                                 response = eval(content, self.python_func)
                                 messages_to_self.append((response, "assistant"))
                             except Exception as e:
                                 messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
+                        elif recipient == "python_exec":
+                            self.logger.warning(f"Calling python_exec with: {repr(content)}")
+                            try:
+                                stdout = io.StringIO()
+                                stderr = io.StringIO()
+                                old_stdout, old_stderr = sys.stdout, sys.stderr
+                                sys.stdout, sys.stderr = stdout, stderr
+                                try:
+                                    exec(content, self.python_func)
+                                finally:
+                                    sys.stdout, sys.stderr = old_stdout, old_stderr
+                                output = stdout.getvalue()
+                                error = stderr.getvalue()
+                                response = output if not error else f"{output}\n[stderr]: {error}"
+                                messages_to_self.append((response, "assistant"))
+                            except Exception as e:
+                                messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
                         else:
-                            raise ValueError(f"Unknown recipient: {recipient}")
-                        
+                            if not recipient.startswith("agent_"):
+                                self.logger.warning(f"Unknown recipient: {recipient}")
+                            agent = self.agents.setdefault(recipient, Agent(recipient))
+                            response = agent.ask(content)
+                            messages_to_self.append((response, "assistant"))
+            # If we have messages to self, we will process them again
+            if not messages_to_self:
+                break
+            # If we have messages to caller, we will return them
+
             # log new messages to self
             for msg in messages_to_self:
                 self.logger.info(f"Message to self: {msg}")
         return str(messages_to_caller)
+    
+
 def setup_logging():
     import sys
     class ColorFormatter(logging.Formatter):
@@ -129,43 +163,6 @@ def setup_logging():
 
     def __repr__(self):
         return f"<Agent {self.name}: {self.short_description}>"
-
-class LazyAgent:
-    def __init__(self, name: str, agents_dir: str, data: dict):
-        self.name = name
-        self.agents_dir = agents_dir
-        self.data = data
-        self._agent = None
-
-    def _load_agent(self):
-        if self._agent is None:
-            self._agent = Agent(self.name, self.data)
-        return self._agent
-    
-    def get_short_description(self):
-        return self.data.get('short_description', '')
-    
-    def get_self_description(self):
-        return self.data.get('self_description', '')
-    
-    def get_name(self):
-        return self.name
-
-    @property
-    def agent(self):
-        return self._load_agent()
-    
-
-def load_agent_descriptions(agents_dir: str, agents: Dict[str, LazyAgent]) -> None:
-    """
-    Update the given agents dict with any new agents found in agents_dir.
-    Existing agents are not replaced.
-    """
-    for fname in os.listdir(agents_dir):
-        if fname.endswith('.json'):
-            agent_name = fname[:-5]  # Remove .json extension
-            data = load_json(os.path.join(agents_dir, fname))
-            agents[agent_name] = LazyAgent(agent_name, agents_dir, data)
 
 
 def load_python_functions(code_dir: str) -> list[PythonFunction]:
