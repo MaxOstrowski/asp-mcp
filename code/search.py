@@ -11,14 +11,14 @@ def google_search_summary(query: str) -> str:
     from googlesearch import search
     import requests
     from bs4 import BeautifulSoup
-    search_results = list(search(query, num_results=3))
+    search_results = list(search(query, num_results=3, timeout=10))
     
     summaries = []
     
     for url in search_results:
         try:
             # Fetch the content of the page
-            response = requests.get(url)
+            response = requests.get(url, timeout=10)
             response.raise_for_status()  # Raise an error for bad responses
             
             # Parse the page content

@@ -1,6 +1,7 @@
 """ Agent class and loader """
 
 from dataclasses import dataclass
+import hashlib
 import io
 import os
 import logging
@@ -16,8 +17,9 @@ AGENT_DESCRIPTION = """
 You are an agent in a multi agent system.
 Your task is to execute tasks and answer questions.
 You shall reason with logic and ensure that you have completed the given task.
-You are encouraged to plan and structure your responses,
-asking yourself intermediate questions that lead to the end result. You will get called again with your plan.
+You are encouraged to plan, subdivide any tasks and forward them to other agents.
+These agents talk back to you, so you can reason with them, but they do not have your knowledge.
+Ask precise questions or given precise instructions to other agents.
 Do not repeat yourself too much, do not use stubs or placeholders.
 ALWAYS CHECK the result of your work before you finish!
 
@@ -25,18 +27,19 @@ You output only in json format, sending messages and status information.
 {
     "messages": [
         {
+            "sender": "AGENT",
             "recipient": RECIPIENT,
             "content": CONTENT,
         }
     ],   
 }
 
+AGENT is your agent name
 CONTENT is the message to send to the recipient.
-RECIPIENT is the target to send the message to.
-The only valid targets are:
+RECIPIENT is the target to send the message to, the only valid targets are:
 - "self": send the message to yourself, you will be called again with this message.
 - "agent_XXX": where XXX is the name of another agent, you can send a message to another agent, it will be called with this message.
-Use other agents to delegate tasks, subdivide your problem into smaller tasks.
+Use other agents to delegate tasks, subdivide your problem into smaller tasks. Do not end in a loop
 - "caller": send the message to the agent that called you
 - "clear": ignore content and clears your history, should be requested by the user
 - "python_eval": the message contains an evaluatable python expression, maybe containing the available functions
@@ -59,8 +62,13 @@ class PythonFunction:
 
 
 class Agent:
+    reset = '\033[0m'
+
     def __init__(self, agent_name: str):
         # Set up logger for this class
+        self.agent_name = agent_name  # Store agent name for coloring
+        self.color = agent_color(self.agent_name)
+
         self.logger = logging.getLogger(f"Agent.{agent_name}")
         python_functions: list[PythonFunction] = load_python_functions(CODE_DIR)
 
@@ -80,63 +88,100 @@ class Agent:
         # Default: echo if possible
         messages_to_self = [(msg, "user")]
         messages_to_caller = []
-        while messages_to_self:
-            answer = self.llm.ask(messages_to_self)
-            messages_to_self.clear()
-            for key, value in answer.items():
-                if key == "messages":
-                    for m in value:
-                        recipient = m["recipient"]
-                        content = str(m["content"])
-                        if recipient == "self":
-                            messages_to_self.append((content, "assistant"))
-                        elif recipient == "clear":
-                            self.llm.clear_history()
-                        elif recipient == "caller":
-                            messages_to_caller.append(content)
-                        elif recipient == "python_eval":
-                            self.logger.warning(f"Calling python_eval with: {repr(content)}")
-                            try:
-                                response = eval(content, self.python_func)
-                                messages_to_self.append((response, "assistant"))
-                            except Exception as e:
-                                messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
-                        elif recipient == "python_exec":
-                            self.logger.warning(f"Calling python_exec with: {repr(content)}")
-                            try:
-                                stdout = io.StringIO()
-                                stderr = io.StringIO()
-                                old_stdout, old_stderr = sys.stdout, sys.stderr
-                                sys.stdout, sys.stderr = stdout, stderr
+        llm_finished = LLM("Given a task and an answer to the task, answer YES if question/task was accomplished, answer NO if not.")
+        llm_finished_messages = [(msg, "user")]
+        while True:
+            while messages_to_self:
+                answer = self.llm.ask(messages_to_self)
+                messages_to_self.clear()
+                for key, value in answer.items():
+                    if key == "messages":
+                        for m in value:
+                            recipient = m["recipient"]
+                            content = str(m["content"])
+                            if recipient == "self":
+                                messages_to_self.append((content, "assistant"))
+                            elif recipient == "clear":
+                                self.llm.clear_history()
+                            elif recipient == "caller":
+                                messages_to_caller.append(content)
+                            elif recipient == "python_eval":
+                                self.logger.warning(f"Calling python_eval with: {repr(content)}")
                                 try:
-                                    exec(content, self.python_func)
-                                finally:
-                                    sys.stdout, sys.stderr = old_stdout, old_stderr
-                                output = stdout.getvalue()
-                                error = stderr.getvalue()
-                                response = output if not error else f"{output}\n[stderr]: {error}"
-                                messages_to_self.append((response, "assistant"))
-                            except Exception as e:
-                                messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
-                        else:
-                            if not recipient.startswith("agent_"):
-                                self.logger.warning(f"Unknown recipient: {recipient}")
-                            agent = self.agents.setdefault(recipient, Agent(recipient))
-                            response = agent.ask(content)
-                            messages_to_self.append((response, "assistant"))
-            # If we have messages to self, we will process them again
-            if not messages_to_self:
-                break
-            # If we have messages to caller, we will return them
+                                    response = eval(content, self.python_func)
+                                    messages_to_self.append((response, "assistant"))
+                                except Exception as e:
+                                    messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
+                            elif recipient == "python_exec":
+                                self.logger.warning(f"Calling python_exec with: {repr(content)}")
+                                try:
+                                    stdout = io.StringIO()
+                                    stderr = io.StringIO()
+                                    old_stdout, old_stderr = sys.stdout, sys.stderr
+                                    sys.stdout, sys.stderr = stdout, stderr
+                                    try:
+                                        exec(content, self.python_func)
+                                    finally:
+                                        sys.stdout, sys.stderr = old_stdout, old_stderr
+                                    output = stdout.getvalue()
+                                    error = stderr.getvalue()
+                                    response = output if not error else f"{output}\n[stderr]: {error}"
+                                    messages_to_self.append((response, "assistant"))
+                                except Exception as e:
+                                    messages_to_self.append((f"[Error evaluating python function: {e} - {content}]", "assistant"))
+                            else:
+                                if not recipient.startswith("agent_"):
+                                    self.logger.warning(f"Unknown recipient: {recipient}")
+                                if agent.agent_name == recipient:
+                                    messages_to_self.append((content, "assistant"))
+                                else:
+                                    agent = self.agents.setdefault(recipient, Agent(recipient))
+                                    self.logger.info(f"{self.color}Forwarding message to {recipient}: {content}{self.reset}")
+                                    response = agent.ask(content)
+                                    messages_to_self.append((response, "assistant"))
+                # log new messages to self
+                for msg in messages_to_self:
+                    self.logger.info(f"{self.color}Message to self: {msg}{self.reset}")
+            
+            llm_finished_messages.extend(messages_to_caller)
+            answer = llm_finished.ask(llm_finished_messages)
+            for key, value in answer.items():
+                    if key == "messages":
+                        for m in value:
+                            recipient = m["recipient"]
+                            content = str(m["content"])
+                            if content.lower() in ["yes", "y"]:
+                                self.logger.info(f"{self.color}Task accomplished, returning to caller.{self.reset}")
+                                return str(messages_to_caller)
+            msg = "Try harder and find answers yourself. Make a plan, use the internet, delegate tasks."
+            self.logger.info(f"{self.color}Adding message to self: {msg}{self.reset}")
+            messages_to_self.append((msg, "user"))
 
-            # log new messages to self
-            for msg in messages_to_self:
-                self.logger.info(f"Message to self: {msg}")
-        return str(messages_to_caller)
+        #return str(messages_to_caller)
     
+
+def agent_color(agent_name):
+    """List of ANSI color codes (foreground)"""
+    COLORS = [
+        '\033[32m', # Green
+        '\033[34m', # Blue
+        '\033[35m', # Magenta
+        '\033[36m', # Cyan
+        '\033[33m', # Yellow
+        '\033[91m', # Light Red
+        '\033[92m', # Light Green
+        '\033[94m', # Light Blue
+        '\033[95m', # Light Magenta
+        '\033[96m', # Light Cyan
+    ]
+    # Hash agent name to pick a color
+    idx = int(hashlib.md5(agent_name.encode()).hexdigest(), 16) % len(COLORS)
+    return COLORS[idx]
+
 
 def setup_logging():
     import sys
+
     class ColorFormatter(logging.Formatter):
         # ANSI escape codes
         DARK_GREEN = '\033[32m'
