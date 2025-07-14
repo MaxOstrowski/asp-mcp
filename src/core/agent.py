@@ -233,11 +233,6 @@ class Agent:
             self.logger.info(f"{self.color}Adding message to self: {msg}{self.reset}")
             message_to_self = (msg, "user")
 
-        #return str(messages_to_caller)
-    
-
-
-
 
 def load_python_functions(code_dir: str) -> list[PythonFunction]:
     """
