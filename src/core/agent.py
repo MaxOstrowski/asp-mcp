@@ -120,7 +120,7 @@ class Agent:
         self.python_func = {func.name: func.function for func in python_functions}
 
         self.agents: dict[str, Agent] = {}
-        self.llm_finished = LLM("Given a task and an answer to the task, answer YES if question/task was accomplished, answer NO if not.")
+        self.llm_finished = LLM("Given a task and an answer to the task, answer YES if question/task was accomplished, answer 'NO, REASON' if not and give a very brief reason.")
         self.llm_new_task = LLM("Compare the two given tasks and answer YES is the task is semantically different.")
 
 
@@ -130,20 +130,22 @@ class Agent:
             return f"{self.parent.long_name()}.{self.color}{self.agent_name}{self.reset}"
         return f"{self.color}{self.agent_name}{self.reset}"
     
-    def task_completed(self, task: str, answers: list[str]) -> bool:
+    def task_completed(self, task: str, answers: list[str]) -> tuple[bool, str]:
         """Check if the task is completed by asking the LLM."""
         m = [(task, "user")]
         m.extend([(msg, "assistant") for msg in answers])
         answer = self.llm_finished.ask(m)
+        self.llm.clear_history()
           
         if "yes" in answer.lower():
             return True
-        return False
+        return False, answer
     
     def task_differs(self, task: str, other_task: str) -> bool:
         """Check if the task is different from another task by asking the LLM."""
         m = [(task, "user"), (other_task, "assistant")]
         answer = self.llm_new_task.ask(m)
+        self.llm.clear_history()
         
         if "yes" in answer.lower():
             return True
@@ -221,11 +223,12 @@ class Agent:
                             message_to_self = (f"{self.color}Skipping message to {recipient} as it is not a new task. Do it yourself.{self.reset}", "user")
                 if message_to_self:
                     self.logger.info(f"{self.color}Message to self: {message_to_self}{self.reset}")
-            if self.task_completed(msg, messages_to_caller):
+            complete, reason = self.task_completed(msg, messages_to_caller)
+            if complete:
                 self.logger.info(f"{self.color}Task accomplished, returning to caller.{self.reset}")
                 return str(messages_to_caller)
-            
-            msg = "The task is not complete. Try harder and find answers yourself. Make a plan, use the internet, delegate tasks."
+
+            msg = f"The task is not complete ({reason}). Try harder and find answers yourself. Make a plan, use the internet, delegate tasks."
             msg += " Dont go in circles."
             self.logger.info(f"{self.color}Adding message to self: {msg}{self.reset}")
             message_to_self = (msg, "user")
