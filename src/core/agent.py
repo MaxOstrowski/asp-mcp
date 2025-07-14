@@ -121,11 +121,12 @@ class Agent:
                 elif recipient == "clear":
                     self.llm.clear_history()
                 elif recipient == "caller":
+                    self.logger.info(f"{self.color}Prepare message to caller: {content}{self.reset}")
                     messages_to_caller.append(content)
                 elif recipient == "python_eval":
                     self.logger.warning(f"{self.color}Calling python_eval with: {repr(content)}{self.reset}")
                     try:
-                        response = eval(content, self.python_func)
+                        response = str(eval(content, self.python_func))
                         message_to_self = (response, "assistant")
                     except Exception as e:
                         message_to_self = (f"{self.color}[Error evaluating python function: {e} - {content}]{self.reset}", "assistant")
