@@ -1,4 +1,3 @@
-
 import logging
 from asp_llm.configuration import Configuration
 from asp_llm.server import Server
@@ -22,48 +21,56 @@ class ChatSession:
             except Exception as e:
                 logging.warning(f"Warning during final cleanup: {e}")
 
-    async def process_llm_response(self, llm_response: str) -> str:
-        """Process the LLM response and execute tools if needed.
+
+    async def process_llm_response(self, llm_response: dict) -> dict:
+        """
+        Process the LLM response and execute OpenAI tool calls if present.
 
         Args:
-            llm_response: The response from the LLM.
+            llm_response: The response object from the OpenAI API.
 
         Returns:
-            The result of tool execution or the original response.
+            A list of messages to append to the conversation history (tool results).
         """
+        tool_result_message = {}
 
-        try:
-            tool_call = json.loads(llm_response)
-            if "tool" in tool_call and "arguments" in tool_call:
-                logging.info(f"Executing tool: {tool_call['tool']}")
-                logging.info(f"With arguments: {tool_call['arguments']}")
+        # Check if the response contains tool calls (OpenAI Tool API)
+        choice = llm_response.choices[0]
+        tool_calls = getattr(choice.message, "tool_calls", []) or []
+        for tool_call in tool_calls:
+            tool_name = tool_call.function.name
+            arguments = json.loads(tool_call.function.arguments)
+            tool_call_id = tool_call.id
 
-                for server in self.servers:
-                    tools = await server.list_tools()
-                    if any(tool.name == tool_call["tool"] for tool in tools):
-                        try:
-                            result = await server.execute_tool(
-                                tool_call["tool"], tool_call["arguments"]
-                            )
-
-                            if isinstance(result, dict) and "progress" in result:
-                                progress = result["progress"]
-                                total = result["total"]
-                                percentage = (progress / total) * 100
-                                logging.info(
-                                    f"Progress: {progress}/{total} ({percentage:.1f}%)"
-                                )
-
-                            return f"Tool execution result: {result}"
-                        except Exception as e:
-                            error_msg = f"Error executing tool: {str(e)}"
-                            logging.error(error_msg)
-                            return error_msg
-
-                return f"No server found with tool: {tool_call['tool']}"
-            return llm_response
-        except json.JSONDecodeError:
-            return llm_response
+            # Find the server that has this tool
+            for server in self.servers:
+                tools = await server.list_tools()
+                if any(tool.name == tool_name for tool in tools):
+                    try:
+                        result = await server.execute_tool(tool_name, arguments)
+                        # Prepare the tool result message for OpenAI API
+                        tool_result_message = {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps(result)
+                        }
+                    except Exception as e:
+                        logging.error(f"Error executing tool {tool_name}: {e}")
+                        tool_result_message = {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps({"error": str(e)})
+                        }
+                    break
+            else:
+                # No server found for this tool
+                logging.error(f"No server found with tool: {tool_name}")
+                tool_result_message = {
+                    "role": "tool",
+                    "tool_call_id": tool_call_id,
+                    "content": json.dumps({"error": f"No server found with tool: {tool_name}"})
+                }
+        return tool_result_message
 
     async def start(self) -> None:
         """Main chat session handler."""
@@ -77,69 +84,51 @@ class ChatSession:
                     return
 
             all_tools = []
+            openai_tools = []
             for server in self.servers:
                 tools = await server.list_tools()
                 all_tools.extend(tools)
-
-            tools_description = "\n".join([tool.format_for_llm() for tool in all_tools])
+                openai_tools.extend(await server.openai_tools())
 
             system_message = (
-                "You are a helpful assistant with access to these tools:\n\n"
-                f"{tools_description}\n"
-                "Choose the appropriate tool based on the user's question. "
-                "If no tool is needed, reply directly.\n\n"
-                "IMPORTANT: When you need to use a tool, you must ONLY respond with "
-                "the exact JSON object format below, nothing else:\n"
-                "{\n"
-                '    "tool": "tool-name",\n'
-                '    "arguments": {\n'
-                '        "argument-name": "value"\n'
-                "    }\n"
-                "}\n\n"
-                "After receiving a tool's response:\n"
-                "1. Transform the raw data into a natural, conversational response\n"
-                "2. Keep responses concise but informative\n"
-                "3. Focus on the most relevant information\n"
-                "4. Use appropriate context from the user's question\n"
-                "5. Avoid simply repeating the raw data\n\n"
-                "Please use only the tools that are explicitly defined above."
+                "If you need further user input, ask for it directly.\n"
+                "Afterwards, respond with an empty string to indicate you are ready for the next user input.\n\n"
                 "Your task is to assist the user in developing an ASP (Answer Set programming) encoding.\n"
                 "Use the tools to create a example and test instances for the problem,\n"
                 "and develop an ASP encoding that captures the problem's requirements.\n"
                 "Develop and test the output and syntax of this encoding step by step.\n"
                 "Use a generate and test approach to develop the encoding.\n"
+                "In the end, write the encoding to the disk.\n"
                 ## TODO give ASP syntax rules and examples
             )
 
-            asp_llm = LLMClient(system_message, self.config)
+            asp_llm = LLMClient(system_message, self.config, openai_tools)
 
-            messages = [{"role": "system", "content": system_message}]
+            user_input = input("You: ").strip().lower()
+            asp_llm.add_message({"role": "user", "content": user_input})
 
             while True:
                 try:
-                    user_input = input("You: ").strip().lower()
-                    if user_input in ["quit", "exit"]:
-                        logging.info("\nExiting...")
-                        break
+                    llm_response = asp_llm.get_response()
+                    tool_result_message = await self.process_llm_response(llm_response)
 
-                    llm_response = asp_llm.get_response(user_input, "user")
-                    messages.append({"role": "user", "content": user_input})
+                    if tool_result_message:
+                        asp_llm.add_message(tool_result_message)
+                        # Continue the loop to let LLM process tool results
+                        continue
 
-                    logging.info("\nAssistant: %s", llm_response)
-
-                    result = await self.process_llm_response(llm_response)
-
-                    if result != llm_response:
-                        messages.append({"role": "assistant", "content": llm_response})
-                        messages.append({"role": "system", "content": result})
-
-                        final_response = self.asp_llm.get_response(messages)
-                        logging.info("\nFinal response: %s", final_response)
-                        messages.append(
-                            {"role": "assistant", "content": final_response}
-                        )
+                    # Get the LLM's reply content
+                    choice = llm_response.choices[0]
+                    content = getattr(choice.message, "content", "")
+                    if content == "":
+                        # LLM requests further user input
+                        user_input = input("You: ").strip().lower()
+                        asp_llm.add_message({"role": "user", "content": user_input})
+                        continue
                     else:
-                        messages.append({"role": "assistant", "content": llm_response})
+                        print(f"LLM: {content}")
+                        # Feed the last answer as the next user message
+                        asp_llm.add_message(choice.message)
 
                 except KeyboardInterrupt:
                     logging.info("\nExiting...")

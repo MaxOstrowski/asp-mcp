@@ -1,4 +1,3 @@
-
 import asyncio
 from contextlib import AsyncExitStack
 import logging
@@ -53,6 +52,17 @@ Arguments:
 """
 
         return output
+
+    def openai_schema(self) -> dict[str, Any]:
+        """Return the tool in OpenAI Tool API schema format."""
+        return {
+            "type": "function",
+            "function": {
+                "name": self.name,
+                "description": self.description,
+                "parameters": self.input_schema,
+            },
+        }
 
 class Server:
     """Manages MCP server connections and tool execution."""
@@ -117,50 +127,44 @@ class Server:
 
         return tools
 
+    async def openai_tools(self) -> list[dict[str, Any]]:
+        """Return all tools in OpenAI Tool API schema format."""
+        tools = await self.list_tools()
+        return [tool.openai_schema() for tool in tools]
+
     async def execute_tool(
         self,
         tool_name: str,
         arguments: dict[str, Any],
-        retries: int = 2,
-        delay: float = 1.0,
     ) -> Any:
-        """Execute a tool with retry mechanism.
+        """Execute a tool.
 
         Args:
             tool_name: Name of the tool to execute.
             arguments: Tool arguments.
-            retries: Number of retry attempts.
-            delay: Delay between retries in seconds.
 
         Returns:
             Tool execution result.
 
         Raises:
             RuntimeError: If server is not initialized.
-            Exception: If tool execution fails after all retries.
+            Exception: If tool execution fails.
         """
         if not self.session:
             raise RuntimeError(f"Server {self.name} not initialized")
 
-        attempt = 0
-        while attempt < retries:
-            try:
-                logging.info(f"Executing {tool_name}...")
-                result = await self.session.call_tool(tool_name, arguments)
-
+        try:
+            logging.info(f"Executing {tool_name}...")
+            result = await self.session.call_tool(tool_name, arguments)
+            if result is None:
+                raise ValueError(f"Tool {tool_name} returned no result.")
+            if isinstance(result, str):
                 return result
+            return result.content[0].text 
 
-            except Exception as e:
-                attempt += 1
-                logging.warning(
-                    f"Error executing tool: {e}. Attempt {attempt} of {retries}."
-                )
-                if attempt < retries:
-                    logging.info(f"Retrying in {delay} seconds...")
-                    await asyncio.sleep(delay)
-                else:
-                    logging.error("Max retries reached. Failing.")
-                    raise
+        except Exception as e:
+            logging.warning(f"Error executing tool: {e}.")
+            raise
 
     async def cleanup(self) -> None:
         """Clean up server resources."""

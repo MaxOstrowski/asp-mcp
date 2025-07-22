@@ -1,4 +1,3 @@
-
 import asyncio
 import logging
 from asp_llm.chat_session import ChatSession
@@ -9,6 +8,9 @@ from asp_llm.server import Server
 logging.basicConfig(
     level=logging.DEBUG, format="%(asctime)s - %(levelname)s - %(message)s"
 )
+# Disable debug logging for external libraries
+for lib in ("asyncio", "urllib3", "httpx", "httpcore", "requests", "openai"):
+    logging.getLogger(lib).setLevel(logging.WARNING)
 
 
 

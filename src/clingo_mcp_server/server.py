@@ -6,6 +6,7 @@ from collections import defaultdict
 from mcp.server.fastmcp import FastMCP
 import clingo
 from typing import Dict, Optional
+from clingo import MessageCode
 
 # In-memory virtual file manager
 class VirtualFileManager:
@@ -108,7 +109,11 @@ def write_virtual_file_to_disk(filename: str) -> dict:
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
     """Check syntax of a virtual file using clingo."""
-    ctl = clingo.Control()
+    log_messages = []
+    def logger(code, msg):
+        log_messages.append(f"[{code.name}] {msg}")
+
+    ctl = clingo.Control(logger=logger)
     for filename in filenames:
         content = vfs.get_content(filename)
         if content is None:
@@ -117,7 +122,10 @@ def check_syntax(filenames: list[str]) -> dict:
             ctl.add("base", [], content)
             ctl.ground([("base", [])])
         except Exception as e:
-            return {"error": f"Syntax error: {e}"}
+            error_msg = f"Syntax error: {e}"
+            if log_messages:
+                error_msg += "\nClingo log:\n" + "\n".join(log_messages)
+            return {"error": error_msg}
     return {"result": "Syntax OK"}
 
 @mcp.tool()
@@ -126,13 +134,18 @@ def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
     max_models: Maximum number of models to return, 0 means all models."""
     if not filenames:
         return {"error": "No files provided."}
-    ctl = clingo.Control(["--models", str(max_models)])
-    for f in filenames:
-        content = vfs.get_content(f)
-        if content is None:
-            return {"error": f"File '{f}' does not exist."}
-        ctl.add("base", [], content)
+    log_messages = []
+    def logger(code, msg):
+        log_messages.append(f"[{code.name}] {msg}")
+
     try:
+        ctl = clingo.Control(["--models", str(max_models)], logger=logger)
+        for f in filenames:
+            content = vfs.get_content(f)
+            if content is None:
+                return {"error": f"File '{f}' does not exist."}
+            ctl.add("base", [], content)
+    
         ctl.ground([("base", [])])
         models = {}
         with ctl.solve(yield_ = True) as handle:
@@ -142,7 +155,10 @@ def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
             return {"result": "UNSATISFIABLE"}
         return {"models": models}
     except Exception as e:
-        return {"error": f"Error running clingo: {e}"}
+        error_msg = f"Error running clingo: {e}"
+        if log_messages:
+            error_msg += "\nClingo log:\n" + "\n".join(log_messages)
+        return {"error": error_msg}
 
 
 def main():

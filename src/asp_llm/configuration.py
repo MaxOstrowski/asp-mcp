@@ -11,7 +11,9 @@ class Configuration:
     def __init__(self) -> None:
         """Initialize configuration with environment variables."""
         self.load_env()
-        self.api_key = os.getenv("LLM_API_KEY")
+        # get environment variables
+        for key, value in os.environ.items():
+            setattr(self, key, value)
 
     @staticmethod
     def load_env() -> None:
@@ -34,18 +36,4 @@ class Configuration:
         """
         with open(file_path, "r") as f:
             return json.load(f)
-
-    @property
-    def llm_api_key(self) -> str:
-        """Get the LLM API key.
-
-        Returns:
-            The API key as a string.
-
-        Raises:
-            ValueError: If the API key is not found in environment variables.
-        """
-        if not self.api_key:
-            raise ValueError("LLM_API_KEY not found in environment variables")
-        return self.api_key
 
