@@ -1,37 +1,45 @@
-
+[project.scripts]
+clingo-mcp-server = "clingo_mcp_server.server:main"
+asp-llm-client = "asp_llm.main:main"
 [project]
-name = "multiagent"
+name = "ASP_MCP_Agent"
 version = "0.1.0"
-description = "Deterministic, game-loop-based multi-agent system."
-authors = [{ name = "Max Ostrowski", email = "max.ostrowski@potassco.com" }]
+description = "Agent project with ASP MCP server and LLM client"
+authors = [
+    { name = "Max Ostrowski", email = "max.ostrowski@potassco.com" }
+]
+requires-python = ">=3.13"
 dependencies = [
-    "openai>=1.0.0",
-    "python-dotenv>=1.0.0"
+    "clingo",
+    "mcp",
+    "openai",
 ]
 
-[project.optional-dependencies]
-dev = [
-    "black>=24.0.0",
-    "mypy>=1.0.0",
-    "pytest>=7.0.0",
-    "coverage>=7.0.0"
-]
-
-[tool.mypy]
-python_version = "3.9"
-strict = true
-files = ["core", "utils"]
+[tool.setuptools]
+package-dir = {"" = "src"}
+packages = ["clingo_mcp_server", "asp_llm"]
 
 [tool.black]
-line-length = 88
-target-version = ['py39']
+line-length = 120
+
+
+[tool.mypy]
+strict = true
+files = ["src/asp_mcp_server", "src/llm_client"]
+
+[tool.pytest.ini_options]
+addopts = "--cov=src --cov-report=term-missing --cov-fail-under=100"
+testpaths = [
+    "tests",
+]
 
 [tool.coverage.run]
 branch = true
-source = ["core", "utils"]
-omit = ["*/__init__.py"]
+source = [
+    "src/asp_mcp_server",
+    "src/llm_client",
+]
 
 [tool.coverage.report]
 show_missing = true
-skip_covered = true
 fail_under = 100

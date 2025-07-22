@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "asp": {
+      "command": "clingo-mcp-server",
+      "args": []
+    }
+  }
+}
