@@ -7,7 +7,6 @@ from typing import Any
 from mcp import ClientSession, StdioServerParameters, stdio_client
 
 
-
 class Tool:
     """Represents a tool with its properties and formatting."""
 
@@ -32,9 +31,7 @@ class Tool:
         args_desc = []
         if "properties" in self.input_schema:
             for param_name, param_info in self.input_schema["properties"].items():
-                arg_desc = (
-                    f"- {param_name}: {param_info.get('description', 'No description')}"
-                )
+                arg_desc = f"- {param_name}: {param_info.get('description', 'No description')}"
                 if param_name in self.input_schema.get("required", []):
                     arg_desc += " (required)"
                 args_desc.append(arg_desc)
@@ -64,6 +61,7 @@ Arguments:
             },
         }
 
+
 class Server:
     """Manages MCP server connections and tool execution."""
 
@@ -84,18 +82,12 @@ class Server:
         server_params = StdioServerParameters(
             command=command,
             args=self.config["args"],
-            env={**os.environ, **self.config["env"]}
-            if self.config.get("env")
-            else None,
+            env={**os.environ, **self.config["env"]} if self.config.get("env") else None,
         )
         try:
-            stdio_transport = await self.exit_stack.enter_async_context(
-                stdio_client(server_params)
-            )
+            stdio_transport = await self.exit_stack.enter_async_context(stdio_client(server_params))
             read, write = stdio_transport
-            session = await self.exit_stack.enter_async_context(
-                ClientSession(read, write)
-            )
+            session = await self.exit_stack.enter_async_context(ClientSession(read, write))
             await session.initialize()
             self.session = session
         except Exception as e:
@@ -120,10 +112,7 @@ class Server:
 
         for item in tools_response:
             if isinstance(item, tuple) and item[0] == "tools":
-                tools.extend(
-                    Tool(tool.name, tool.description, tool.inputSchema, tool.title)
-                    for tool in item[1]
-                )
+                tools.extend(Tool(tool.name, tool.description, tool.inputSchema, tool.title) for tool in item[1])
 
         return tools
 
@@ -160,7 +149,7 @@ class Server:
                 raise ValueError(f"Tool {tool_name} returned no result.")
             if isinstance(result, str):
                 return result
-            return result.content[0].text 
+            return result.content[0].text
 
         except Exception as e:
             logging.warning(f"Error executing tool: {e}.")

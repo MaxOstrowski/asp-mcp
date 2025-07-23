@@ -2,11 +2,16 @@
 ASP ModelContextProtocol Server
 Exposes an MCP server that executes ASP code using clingo.
 """
+
+import logging
+
+logging.getLogger("mcp").setLevel(logging.WARNING)
+
 from collections import defaultdict
 from mcp.server.fastmcp import FastMCP
 import clingo
 from typing import Dict, Optional
-from clingo import MessageCode
+
 
 # In-memory virtual file manager
 class VirtualFileManager:
@@ -32,16 +37,18 @@ class VirtualFileManager:
 
     def list_files(self):
         return list(self.files.keys())
-    
+
     def write_file_to_disk(self, name: str) -> None:
         """Write the content of a virtual file to disk."""
-        with open(name, 'w') as f:
+        with open(name, "w") as f:
             f.write(self.get_content(name))
+
 
 # Singleton file manager
 vfs = VirtualFileManager()
 
 mcp = FastMCP("clingo")
+
 
 @mcp.tool()
 def create_virtual_file(filename: str) -> dict:
@@ -52,18 +59,17 @@ def create_virtual_file(filename: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+
 @mcp.tool()
 def append_to_virtual_file(filename: str, content: str) -> dict:
     """Append content to a virtual file."""
     try:
         vfs.append_to_file(filename, content)
         content = vfs.get_content(filename)
-        return {
-            "result": f"Appended to '{filename}'.",
-            "content": content
-        }
+        return {"result": f"Appended to '{filename}'.", "content": content}
     except Exception as e:
         return {"error": str(e)}
+
 
 @mcp.tool()
 def undo_append_to_virtual_file(filename: str) -> dict:
@@ -73,6 +79,7 @@ def undo_append_to_virtual_file(filename: str) -> dict:
         return {"result": f"Last append undone for '{filename}'."}
     except Exception as e:
         return {"error": str(e)}
+
 
 @mcp.tool()
 def get_virtual_file_content(filename: str) -> dict:
@@ -85,6 +92,7 @@ def get_virtual_file_content(filename: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+
 @mcp.tool()
 def list_virtual_files() -> dict:
     """List all virtual files."""
@@ -93,6 +101,7 @@ def list_virtual_files() -> dict:
         return {"files": files}
     except Exception as e:
         return {"error": str(e)}
+
 
 @mcp.tool()
 def write_virtual_file_to_disk(filename: str) -> dict:
@@ -103,13 +112,20 @@ def write_virtual_file_to_disk(filename: str) -> dict:
     except Exception as e:
         return {"error": str(e)}
 
+
 ### TODO: number parts of the files, be accesible by indexes. Then you can remove or change
 ### parts of the encoding without rewriting the whole file.
 ### Also allow to inspect ground rules (maybe sample) of single parts of the file.
+### TODO: use tree-sitter https://github.com/potassco/tree-sitter-clingo to check syntax with
+### better messages and to parse the encoding while writing to a file.
+### TODO: add const parameters to clingo call
+### TODO: add stats results to the run_clingo tool
+### TODO: add clintest tool to test the encoding
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
     """Check syntax of a virtual file using clingo."""
     log_messages = []
+
     def logger(code, msg):
         log_messages.append(f"[{code.name}] {msg}")
 
@@ -128,6 +144,7 @@ def check_syntax(filenames: list[str]) -> dict:
             return {"error": error_msg}
     return {"result": "Syntax OK"}
 
+
 @mcp.tool()
 def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
     """Run clingo on the virtual file and return the output.
@@ -135,6 +152,7 @@ def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
     if not filenames:
         return {"error": "No files provided."}
     log_messages = []
+
     def logger(code, msg):
         log_messages.append(f"[{code.name}] {msg}")
 
@@ -145,10 +163,10 @@ def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
             if content is None:
                 return {"error": f"File '{f}' does not exist."}
             ctl.add("base", [], content)
-    
+
         ctl.ground([("base", [])])
         models = {}
-        with ctl.solve(yield_ = True) as handle:
+        with ctl.solve(yield_=True) as handle:
             for model in handle:
                 models[f"Answer {model.number}"] = [str(atom) for atom in model.symbols(shown=True)]
         if not models:
@@ -164,9 +182,11 @@ def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
 def main():
     mcp.run()
 
+
 # Entry point for console_scripts
 def main():
     mcp.run()
+
 
 if __name__ == "__main__":
     main()

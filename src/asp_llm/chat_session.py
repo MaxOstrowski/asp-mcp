@@ -4,6 +4,7 @@ from asp_llm.server import Server
 from asp_llm.llm_client import LLMClient
 import json
 
+from asp_llm.stdio import AbstractIOHandler, StdIOHandler
 
 
 class ChatSession:
@@ -12,6 +13,7 @@ class ChatSession:
     def __init__(self, servers: list[Server], config: Configuration) -> None:
         self.servers: list[Server] = servers
         self.config: Configuration = config
+        self.io: AbstractIOHandler = StdIOHandler()
 
     async def cleanup_servers(self) -> None:
         """Clean up all servers properly."""
@@ -20,7 +22,6 @@ class ChatSession:
                 await server.cleanup()
             except Exception as e:
                 logging.warning(f"Warning during final cleanup: {e}")
-
 
     async def process_llm_response(self, llm_response: dict) -> dict:
         """
@@ -52,14 +53,14 @@ class ChatSession:
                         tool_result_message = {
                             "role": "tool",
                             "tool_call_id": tool_call_id,
-                            "content": json.dumps(result)
+                            "content": json.dumps(result),
                         }
                     except Exception as e:
                         logging.error(f"Error executing tool {tool_name}: {e}")
                         tool_result_message = {
                             "role": "tool",
                             "tool_call_id": tool_call_id,
-                            "content": json.dumps({"error": str(e)})
+                            "content": json.dumps({"error": str(e)}),
                         }
                     break
             else:
@@ -68,7 +69,7 @@ class ChatSession:
                 tool_result_message = {
                     "role": "tool",
                     "tool_call_id": tool_call_id,
-                    "content": json.dumps({"error": f"No server found with tool: {tool_name}"})
+                    "content": json.dumps({"error": f"No server found with tool: {tool_name}"}),
                 }
         return tool_result_message
 
@@ -102,9 +103,10 @@ class ChatSession:
                 ## TODO give ASP syntax rules and examples
             )
 
-            asp_llm = LLMClient(system_message, self.config, openai_tools)
+            asp_llm = LLMClient(self.io, system_message, self.config, openai_tools)
 
-            user_input = input("You: ").strip().lower()
+            user_input = self.io.get_input("You: ")
+
             asp_llm.add_message({"role": "user", "content": user_input})
 
             while True:
@@ -122,13 +124,9 @@ class ChatSession:
                     content = getattr(choice.message, "content", "")
                     if content == "":
                         # LLM requests further user input
-                        user_input = input("You: ").strip().lower()
+                        user_input = self.io.get_input("You: ")
                         asp_llm.add_message({"role": "user", "content": user_input})
                         continue
-                    else:
-                        print(f"LLM: {content}")
-                        # Feed the last answer as the next user message
-                        asp_llm.add_message(choice.message)
 
                 except KeyboardInterrupt:
                     logging.info("\nExiting...")

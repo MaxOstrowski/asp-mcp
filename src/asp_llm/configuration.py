@@ -1,4 +1,3 @@
-
 import json
 import os
 from typing import Any
@@ -36,4 +35,3 @@ class Configuration:
         """
         with open(file_path, "r") as f:
             return json.load(f)
-

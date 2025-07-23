@@ -5,19 +5,23 @@ from openai import AzureOpenAI
 from openai.types.chat import ChatCompletion
 import os
 
+from asp_llm.stdio import AbstractIOHandler
+
+
 class LLMClient:
     """A client to interact with OpenAI's LLM."""
 
-    def __init__(self, initial_prompt: str, config: Configuration,
-                 tools: list[dict]) -> None:
+    def __init__(self, io: AbstractIOHandler, initial_prompt: str, config: Configuration, tools: list[dict]) -> None:
         """Initialize the LLM client with the provided API key."""
-        
+
+        self.io = io
         self.initial_prompt = initial_prompt
-        self.client = AzureOpenAI(api_version=config.AZURE_OPENAI_API_VERSION,
-                                  azure_endpoint=config.AZURE_OPENAI_ENDPOINT,
-                                  api_key=config.AZURE_OPENAI_KEY,
-                                  azure_deployment=config.AZURE_OPENAI_DEPLOYMENT,
-                                  )
+        self.client = AzureOpenAI(
+            api_version=config.AZURE_OPENAI_API_VERSION,
+            azure_endpoint=config.AZURE_OPENAI_ENDPOINT,
+            api_key=config.AZURE_OPENAI_KEY,
+            azure_deployment=config.AZURE_OPENAI_DEPLOYMENT,
+        )
         self.model = config.AZURE_OPENAI_MODEL
         self.clear_history()
         self.tools = tools
@@ -39,25 +43,14 @@ class LLMClient:
             raise ValueError("Message must be a dict or have model_dump/dict method.")
 
         self.history.append(msg_dict)
-        if msg_dict.get('role', 'unknown') == "unknown":
-            a = 9
-        logging.debug(f"Message added: {msg_dict.get('role', 'unknown')} - {msg_dict.get('content', '')}")
+        self.io.write_output(msg_dict)
 
     def get_response(self) -> ChatCompletion:
         """Get a response from the LLM for a given prompt."""
         response = self.client.chat.completions.create(
-            model=self.model,
-            messages=self.history,
-            tools=self.tools,
-            max_completion_tokens=1500,
-            temperature=0.7
+            model=self.model, messages=self.history, tools=self.tools, max_completion_tokens=1500, temperature=0.7
         )
-        # add response to history, that looks weird
         choice = response.choices[0]
         message = choice.message
-        self.history.append(message)
-        # msg_dict = {"role": "assistant", "content": message.content}
-        # if hasattr(message, "tool_calls") and message.tool_calls:
-        #     msg_dict["tool_calls"] = [tc.model_dump() for tc in message.tool_calls]
-        # self.history.append(msg_dict)
+        self.add_message(message)
         return response
