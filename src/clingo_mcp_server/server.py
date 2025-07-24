@@ -19,21 +19,23 @@ class VirtualFileManager:
         self.files: Dict[str, list[str]] = defaultdict(list)
 
     def create_file(self, name: str) -> None:
-        self.files[name] = []
+        self.files[name] = {}
 
-    def append_to_file(self, name: str, content: str) -> None:
+    def write_to_file(self, name: str, content: str, index: Optional[int] = None) -> None:
         if name not in self.files:
             self.create_file(name)
-        self.files[name].append(content)
+        if index is None:
+            index = len(self.files[name])
+        self.files[name][index] = content
 
-    def undo_append(self, name: str) -> None:
-        if name in self.files and self.files[name]:
-            self.files[name].pop()
+    def delete_part_of_file(self, name: str, index: int) -> None:
+        if name in self.files and index in self.files[name]:
+            del self.files[name][index]
 
-    def get_content(self, name: str) -> Optional[str]:
+    def get_content(self, name: str) -> dict[int, str] | None:
         if name not in self.files:
             return None
-        return "".join(self.files.get(name, []))
+        return self.files.get(name, {})
 
     def list_files(self):
         return list(self.files.keys())
@@ -41,7 +43,11 @@ class VirtualFileManager:
     def write_file_to_disk(self, name: str) -> None:
         """Write the content of a virtual file to disk."""
         with open(name, "w") as f:
-            f.write(self.get_content(name))
+            content = self.get_content(name)
+            if content is None:
+                raise ValueError(f"File '{name}' does not exist.")
+            for part in content.values():
+                f.write(part + "\n")
 
 
 # Singleton file manager
@@ -61,10 +67,11 @@ def create_virtual_file(filename: str) -> dict:
 
 
 @mcp.tool()
-def append_to_virtual_file(filename: str, content: str) -> dict:
-    """Append content to a virtual file."""
+def write_part_of_virtual_file(filename: str, content: str, part_index: Optional[int] = None) -> dict:
+    """Write a part of a virtual file.
+    If part_index is None, appends to the file."""
     try:
-        vfs.append_to_file(filename, content)
+        vfs.write_to_file(filename, content, part_index)
         content = vfs.get_content(filename)
         return {"result": f"Appended to '{filename}'.", "content": content}
     except Exception as e:
@@ -72,11 +79,11 @@ def append_to_virtual_file(filename: str, content: str) -> dict:
 
 
 @mcp.tool()
-def undo_append_to_virtual_file(filename: str) -> dict:
-    """Undo the last append operation on a virtual file."""
+def delete_part_of_virtual_file(filename: str, part_index: int) -> dict:
+    """Delete a part of a virtual file."""
     try:
-        vfs.undo_append(filename)
-        return {"result": f"Last append undone for '{filename}'."}
+        vfs.delete_part_of_file(filename, part_index)
+        return {"result": f"Deleted part {part_index} of '{filename}'.", "content": vfs.get_content(filename)}
     except Exception as e:
         return {"error": str(e)}
 
@@ -113,9 +120,8 @@ def write_virtual_file_to_disk(filename: str) -> dict:
         return {"error": str(e)}
 
 
-### TODO: number parts of the files, be accesible by indexes. Then you can remove or change
-### parts of the encoding without rewriting the whole file.
-### Also allow to inspect ground rules (maybe sample) of single parts of the file.
+
+### TODO: Also allow to inspect ground rules (maybe sample) of single parts of the file.
 ### TODO: use tree-sitter https://github.com/potassco/tree-sitter-clingo to check syntax with
 ### better messages and to parse the encoding while writing to a file.
 ### TODO: add clintest tool to test the encoding
@@ -132,6 +138,7 @@ def check_syntax(filenames: list[str]) -> dict:
         content = vfs.get_content(filename)
         if content is None:
             return {"error": f"File '{filename}' does not exist."}
+        content = "\n".join(content.values())
         try:
             ctl.add("base", [], content)
             ctl.ground([("base", [])])
@@ -166,7 +173,7 @@ def select_statistics(stats: Dict[str, Any]) -> Dict[str, Any]:
 def run_clingo(
     filenames: list[str],
     max_models: int = 1,
-    const_params: list[str] = None,
+    const_params: Optional[list[str]] = None,
 ) -> dict:
     """Run clingo on the virtual file(s) and return the output.
     max_models: Maximum number of models to return, 0 means all models.
@@ -190,6 +197,7 @@ def run_clingo(
             content = vfs.get_content(f)
             if content is None:
                 return {"error": f"File '{f}' does not exist."}
+            content = "\n".join(content.values())
             ctl.add("base", [], content)
 
         ctl.ground([("base", [])])

@@ -23,7 +23,7 @@ class ChatSession:
             except Exception as e:
                 logging.warning(f"Warning during final cleanup: {e}")
 
-    async def process_llm_response(self, llm_response: dict) -> dict:
+    async def process_llm_response(self, llm_response: dict) -> list[dict]:
         """
         Process the LLM response and execute OpenAI tool calls if present.
 
@@ -33,7 +33,7 @@ class ChatSession:
         Returns:
             A list of messages to append to the conversation history (tool results).
         """
-        tool_result_message = {}
+        tool_result_messages = []
 
         # Check if the response contains tool calls (OpenAI Tool API)
         choice = llm_response.choices[0]
@@ -50,28 +50,37 @@ class ChatSession:
                     try:
                         result = await server.execute_tool(tool_name, arguments)
                         # Prepare the tool result message for OpenAI API
-                        tool_result_message = {
+                        tool_result_messages.append({
                             "role": "tool",
                             "tool_call_id": tool_call_id,
                             "content": result,
-                        }
+                        })
                     except Exception as e:
                         logging.error(f"Error executing tool {tool_name}: {e}")
-                        tool_result_message = {
+                        tool_result_messages.append({
                             "role": "tool",
                             "tool_call_id": tool_call_id,
                             "content": json.dumps({"error": str(e)}),
-                        }
+                        })
                     break
             else:
-                # No server found for this tool
-                logging.error(f"No server found with tool: {tool_name}")
-                tool_result_message = {
-                    "role": "tool",
-                    "tool_call_id": tool_call_id,
-                    "content": json.dumps({"error": f"No server found with tool: {tool_name}"}),
-                }
-        return tool_result_message
+                if tool_name == self.io.input_io_tool_name():
+                    # Handle the input tool call
+                    user_input = self.io.get_input("".join(arguments["prompt"]) + ": ")
+                    tool_result_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": user_input,
+                    })
+                else:
+                    # No server found for this tool
+                    logging.error(f"No server found with tool: {tool_name}")
+                    tool_result_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": json.dumps({"error": f"No server found with tool: {tool_name}"}),
+                    })
+        return tool_result_messages
 
     async def start(self) -> None:
         """Main chat session handler."""
@@ -85,21 +94,20 @@ class ChatSession:
                     return
 
             all_tools = []
-            openai_tools = []
+            openai_tools = [self.io.input_tool()]
             for server in self.servers:
                 tools = await server.list_tools()
                 all_tools.extend(tools)
                 openai_tools.extend(await server.openai_tools())
 
             system_message = (
-                "If you need further user input, ask for it directly.\n"
-                "Afterwards, respond with an empty string to indicate you are ready for the next user input.\n\n"
                 "Your task is to assist the user in developing an ASP (Answer Set programming) encoding.\n"
                 "Use the tools to create a example and test instances for the problem,\n"
                 "and develop an ASP encoding that captures the problem's requirements.\n"
                 "Develop and test the output and syntax of this encoding step by step.\n"
                 "Use a generate and test approach to develop the encoding.\n"
                 "In the end, write the encoding to the disk.\n"
+                "If you need additional information, ask the user using the input tool.\n"
                 ## TODO give ASP syntax rules and examples
             )
 
@@ -112,21 +120,13 @@ class ChatSession:
             while True:
                 try:
                     llm_response = asp_llm.get_response()
-                    tool_result_message = await self.process_llm_response(llm_response)
+                    tool_result_messages = await self.process_llm_response(llm_response)
 
-                    if tool_result_message:
-                        asp_llm.add_message(tool_result_message)
-                        # Continue the loop to let LLM process tool results
-                        continue
-
-                    # Get the LLM's reply content
-                    choice = llm_response.choices[0]
-                    content = getattr(choice.message, "content", "")
-                    if content == "":
-                        # LLM requests further user input
+                    for msg in tool_result_messages:
+                        asp_llm.add_message(msg)
+                    if not tool_result_messages:
                         user_input = self.io.get_input("You: ")
                         asp_llm.add_message({"role": "user", "content": user_input})
-                        continue
 
                 except KeyboardInterrupt:
                     logging.info("\nExiting...")
