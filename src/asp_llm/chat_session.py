@@ -53,7 +53,7 @@ class ChatSession:
                         tool_result_message = {
                             "role": "tool",
                             "tool_call_id": tool_call_id,
-                            "content": json.dumps(result),
+                            "content": result,
                         }
                     except Exception as e:
                         logging.error(f"Error executing tool {tool_name}: {e}")

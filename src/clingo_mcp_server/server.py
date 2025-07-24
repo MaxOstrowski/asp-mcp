@@ -10,7 +10,7 @@ logging.getLogger("mcp").setLevel(logging.WARNING)
 from collections import defaultdict
 from mcp.server.fastmcp import FastMCP
 import clingo
-from typing import Dict, Optional
+from typing import Dict, Optional, Any
 
 
 # In-memory virtual file manager
@@ -118,8 +118,6 @@ def write_virtual_file_to_disk(filename: str) -> dict:
 ### Also allow to inspect ground rules (maybe sample) of single parts of the file.
 ### TODO: use tree-sitter https://github.com/potassco/tree-sitter-clingo to check syntax with
 ### better messages and to parse the encoding while writing to a file.
-### TODO: add const parameters to clingo call
-### TODO: add stats results to the run_clingo tool
 ### TODO: add clintest tool to test the encoding
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
@@ -145,19 +143,49 @@ def check_syntax(filenames: list[str]) -> dict:
     return {"result": "Syntax OK"}
 
 
+def select_statistics(stats: Dict[str, Any]) -> Dict[str, Any]:
+    """Select and format relevant statistics from clingo."""
+    selected_stats = {}
+
+    selected_stats["program"] = {}
+    selected_stats["program"]["vars"] = stats["problem"]["generator"]["vars"]
+    selected_stats["program"]["vars_eliminated"] = stats["problem"]["generator"]["vars_eliminated"]
+    selected_stats["program"]["constraints"] = stats["problem"]["generator"]["constraints"]
+    selected_stats["program"]["constraints_binary"] = stats["problem"]["generator"]["constraints_binary"]
+    selected_stats["program"]["constraints_ternary"] = stats["problem"]["generator"]["constraints_ternary"]
+
+    selected_stats["times"] = stats["accu"]["times"]
+    selected_stats["enumeration"] = stats["accu"]["models"]
+
+    selected_stats["solving"] = {}
+    selected_stats["solving"]["choices"] = stats["accu"]["solving"]["solvers"]["choices"]
+    selected_stats["solving"]["conflicts"] = stats["accu"]["solving"]["solvers"]["conflicts"]
+    return selected_stats
+
 @mcp.tool()
-def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
-    """Run clingo on the virtual file and return the output.
-    max_models: Maximum number of models to return, 0 means all models."""
+def run_clingo(
+    filenames: list[str],
+    max_models: int = 1,
+    const_params: list[str] = None,
+) -> dict:
+    """Run clingo on the virtual file(s) and return the output.
+    max_models: Maximum number of models to return, 0 means all models.
+    const_params: Additional constants of the form <constant>=<value> passed to the encoding."""
     if not filenames:
         return {"error": "No files provided."}
     log_messages = []
+    if const_params is None:
+        const_params = []
 
     def logger(code, msg):
         log_messages.append(f"[{code.name}] {msg}")
 
     try:
-        ctl = clingo.Control(["--models", str(max_models)], logger=logger)
+        ctl_args = ["--models", str(max_models)]
+        for p in const_params:
+            ctl_args.extend(["--const", str(p)])
+        ctl_args.append("--stats")
+        ctl = clingo.Control(ctl_args, logger=logger)
         for f in filenames:
             content = vfs.get_content(f)
             if content is None:
@@ -170,13 +198,18 @@ def run_clingo(filenames: list[str], max_models: int = 1) -> dict:
             for model in handle:
                 models[f"Answer {model.number}"] = [str(atom) for atom in model.symbols(shown=True)]
         if not models:
-            return {"result": "UNSATISFIABLE"}
-        return {"models": models}
+            result = {"result": "UNSATISFIABLE"}
+        else:
+            result = {"models": models}
+        result["statistics"] = select_statistics(ctl.statistics)
+        return result
     except Exception as e:
         error_msg = f"Error running clingo: {e}"
         if log_messages:
             error_msg += "\nClingo log:\n" + "\n".join(log_messages)
         return {"error": error_msg}
+    
+
 
 
 def main():

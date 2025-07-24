@@ -13,6 +13,7 @@ dependencies = [
     "clingo",
     "mcp",
     "openai",
+    "rich",
 ]
 
 [tool.setuptools]
