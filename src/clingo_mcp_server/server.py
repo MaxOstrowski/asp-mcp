@@ -72,8 +72,12 @@ def write_part_of_virtual_file(filename: str, content: str, part_index: Optional
     If part_index is None, appends to the file."""
     try:
         vfs.write_to_file(filename, content, part_index)
+        msg = _check_syntax(content)
         content = vfs.get_content(filename)
-        return {"result": f"Appended to '{filename}'.", "content": content}
+        ret = {"result": f"Appended to '{filename}'.", "content": content}
+        if msg:
+            ret["error"] = msg
+        return ret
     except Exception as e:
         return {"error": str(e)}
 
@@ -125,6 +129,7 @@ def write_virtual_file_to_disk(filename: str) -> dict:
 ### TODO: use tree-sitter https://github.com/potassco/tree-sitter-clingo to check syntax with
 ### better messages and to parse the encoding while writing to a file.
 ### TODO: add clintest tool to test the encoding
+### TODO: clingraph support to visualize the encoding
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
     """Check syntax of a virtual file using clingo."""
@@ -139,15 +144,28 @@ def check_syntax(filenames: list[str]) -> dict:
         if content is None:
             return {"error": f"File '{filename}' does not exist."}
         content = "\n".join(content.values())
-        try:
-            ctl.add("base", [], content)
-            ctl.ground([("base", [])])
-        except Exception as e:
-            error_msg = f"Syntax error: {e}"
-            if log_messages:
-                error_msg += "\nClingo log:\n" + "\n".join(log_messages)
-            return {"error": error_msg}
+        msg = _check_syntax(content)
+        if msg:
+            return {"error": msg}
     return {"result": "Syntax OK"}
+
+def _check_syntax(content: str) -> str:
+    """Check syntax of a single content string using clingo."""
+    log_messages = []
+
+    def logger(code, msg):
+        log_messages.append(f"[{code.name}] {msg}")
+
+    ctl = clingo.Control(logger=logger)
+    try:
+        ctl.add("base", [], content)
+        ctl.ground([("base", [])])
+    except Exception as e:
+        error_msg = f"Syntax error: {e}"
+        if log_messages:
+            error_msg += "\nClingo log:\n" + "\n".join(log_messages)
+        return error_msg
+    return ""
 
 
 def select_statistics(stats: Dict[str, Any]) -> Dict[str, Any]:
