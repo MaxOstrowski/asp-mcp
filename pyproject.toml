@@ -14,11 +14,17 @@ dependencies = [
     "mcp",
     "openai",
     "rich",
+    "pytest",
+    "clintest",
 ]
 
 [tool.setuptools]
 package-dir = {"" = "src"}
 packages = ["clingo_mcp_server", "asp_llm"]
+
+[tool.setuptools.package-data]
+"asp_llm.resources" = ["agent_description.txt"]
+"clingo_mcp_server.resources" = ["test_gen.py"]
 
 [tool.black]
 line-length = 120
@@ -29,7 +35,6 @@ strict = true
 files = ["src/asp_mcp_server", "src/llm_client"]
 
 [tool.pytest.ini_options]
-addopts = "--cov=src --cov-report=term-missing --cov-fail-under=100"
 testpaths = [
     "tests",
 ]

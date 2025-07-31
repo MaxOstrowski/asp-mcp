@@ -3,7 +3,12 @@ ASP ModelContextProtocol Server
 Exposes an MCP server that executes ASP code using clingo.
 """
 
+import pytest
+import importlib
 import logging
+import os
+import tempfile
+import uuid
 
 logging.getLogger("mcp").setLevel(logging.WARNING)
 
@@ -21,18 +26,19 @@ class VirtualFileManager:
     def create_file(self, name: str) -> None:
         self.files[name] = {}
 
+
     def write_to_file(self, name: str, content: str, index: Optional[int] = None) -> None:
         if name not in self.files:
             self.create_file(name)
         if index is None:
             index = len(self.files[name])
-        self.files[name][index] = content
+        self.files[name][str(index)] = content
 
     def delete_part_of_file(self, name: str, index: int) -> None:
-        if name in self.files and index in self.files[name]:
-            del self.files[name][index]
+        if name in self.files and str(index) in self.files[name]:
+            del self.files[name][str(index)]
 
-    def get_content(self, name: str) -> dict[int, str] | None:
+    def get_content(self, name: str) -> dict[str, str] | None:
         if name not in self.files:
             return None
         return self.files.get(name, {})
@@ -58,7 +64,9 @@ mcp = FastMCP("clingo")
 
 @mcp.tool()
 def create_virtual_file(filename: str) -> dict:
-    """Create a new virtual file (overwrites if exists)."""
+    """Create a new virtual file (overwrites if exists).
+    Use ending .lp for ASP encodings.
+    Use ending .py for test files."""
     try:
         vfs.create_file(filename)
         return {"result": f"File '{filename}' created."}
@@ -69,14 +77,21 @@ def create_virtual_file(filename: str) -> dict:
 @mcp.tool()
 def write_part_of_virtual_file(filename: str, content: str, part_index: Optional[int] = None) -> dict:
     """Write a part of a virtual file.
-    If part_index is None, appends to the file."""
+    Parts are usually increasing numbers starting from 0.
+    Single parts can be overwritten  or deleted.
+    If part_index is None, a new part with the next index is created."""
     try:
         vfs.write_to_file(filename, content, part_index)
-        msg = _check_syntax(content)
+        ret = {"result": f"Appended to '{filename}'."}
+        # if filename ends in lp
+        if filename.endswith(".lp"):
+            msg = _check_syntax(content)
+            if msg:
+                ret["error"] = msg
+            else:
+                ret["hint"] = "Remember to write tests for this part of your encoding."
         content = vfs.get_content(filename)
-        ret = {"result": f"Appended to '{filename}'.", "content": content}
-        if msg:
-            ret["error"] = msg
+        ret["content"] = content
         return ret
     except Exception as e:
         return {"error": str(e)}
@@ -122,7 +137,7 @@ def write_virtual_file_to_disk(filename: str) -> dict:
         return {"result": f"File '{filename}' written to disk."}
     except Exception as e:
         return {"error": str(e)}
-
+    
 
 
 ### TODO: Also allow to inspect ground rules (maybe sample) of single parts of the file.
@@ -130,6 +145,11 @@ def write_virtual_file_to_disk(filename: str) -> dict:
 ### better messages and to parse the encoding while writing to a file.
 ### TODO: add clintest tool to test the encoding
 ### TODO: clingraph support to visualize the encoding
+### TODO: support for clingodl, clingcon
+### TODO: debugging technique to add error in head of integrity and minimize amount of errors
+### TODO: check examples in controlled natural language from https://github.com/dodaro/cnl2asp
+### TODO: give more planning structure, create choices, write tests about expected solutions for example, etc...
+
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
     """Check syntax of a virtual file using clingo."""
@@ -234,21 +254,96 @@ def run_clingo(
         if log_messages:
             error_msg += "\nClingo log:\n" + "\n".join(log_messages)
         return {"error": error_msg}
-    
 
+
+@mcp.tool()
+def run_tests() -> dict:
+    """
+    Run all test files with ending .py.
+    Tests enumerate and check all models of a (part of) encoding.
+    You can:
+
+    def enumerate_at_most_n_models(num_models: int, constants: list[str], file_parts: list[tuple[str, list[int]]]) -> tuple[SolveResult, Model]:
+    def enumerate_all_models(constants: list[str], file_parts: list[tuple[str, list[int]]]) -> tuple[SolveResult, list[Model]]:
+    at most 10000 models are returned for performance reasons.
+
+    Here is an example of a test1.py file that checks the n-queens problem:
+
+    ```
+    def test_solution_integrity():
+
+        res, models = enumerate_all_models(["n=8"], [("encoding.lp", [0,1,2])])
+        assert res.satisfiable
+        assert len(models) == 92
+        for model in models:
+            queens: dict[int, int] = {}
+            for atom in model.symbols:
+                if atom.name == "queen":
+                    queens[atom.arguments[0].number] = atom.arguments[1].number
+            assert len(queens) == 8
+            assert len(set(queens.values())) == 8  # all columns must be unique
+            assert len(set(queens.keys())) == 8 # all rows must be unique
+            assert len(set(queens[r] - r for r in queens)) == 8  # all diagonals must be unique
+            assert len(set(queens[r] + r for r in queens)) == 8
+    ```
+    """
+    result = {
+        "tests": [],
+    }
+    for name in vfs.files.keys():
+        if name.endswith(".py"):
+            result["tests"].append(run_test(name))
+
+    return result
+
+def run_test(testfile: str) -> dict:
+    """
+    Run a single test file and check its output.
+    """
+    result = {"status": "error"}
+    test_code = "__vfs = "
+    test_code += repr(dict(vfs.files))  # Serialize the virtual file system state
+    test_code += "\n\n"
+    # load test code from resource file test_gen.py
+    with importlib.resources.files("clingo_mcp_server.resources").joinpath("test_gen.py").open("r", encoding="utf-8") as f:
+        test_code += f.read()
+
+    test_code += "\n"
+    test_code += "".join(vfs.get_content(testfile).values())
+
+    import sys
+    import io
+    with tempfile.TemporaryDirectory() as tmpdirname:
+        test_file = os.path.join(tmpdirname, f"test_file_{uuid.uuid4().hex}.py")
+        with open(test_file, "w") as f:
+            f.write(test_code)
+        orig_stdout = sys.stdout
+        orig_stderr = sys.stderr
+        stdout_buffer = io.StringIO()
+        stderr_buffer = io.StringIO()
+        try:
+            sys.stdout = stdout_buffer
+            sys.stderr = stderr_buffer
+            sys.dont_write_bytecode = True
+            exit_code = pytest.main([test_file])  # returns exit code (0 = success)
+        finally:
+            sys.stdout = orig_stdout
+            sys.stderr = orig_stderr
+            sys.dont_write_bytecode = False
+        result = {
+            "stdout": stdout_buffer.getvalue(),
+            "stderr": stderr_buffer.getvalue(),
+        }
+        if exit_code == 0:
+            result["status"] = "success"
+            
+    return result
 
 
 def main():
+    #run_tests()
     mcp.run()
 
-
-# Entry point for console_scripts
-def main():
-    mcp.run()
-
-
-if __name__ == "__main__":
-    main()
 
 if __name__ == "__main__":
     main()
