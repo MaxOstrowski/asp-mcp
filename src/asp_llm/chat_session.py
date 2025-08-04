@@ -116,9 +116,14 @@ class ChatSession:
 
                     for msg in tool_result_messages:
                         asp_llm.add_message(msg)
-                    if not tool_result_messages:
+                    msg = llm_response.choices[0].message.content
+                    if msg and len(msg) >= 3 and '?' in msg[-3:]:
                         user_input = self.io.get_input("You: ")
                         asp_llm.add_message({"role": "user", "content": user_input})
+
+                    # if not tool_result_messages:
+                    #     user_input = self.io.get_input("You: ")
+                    #     asp_llm.add_message({"role": "user", "content": user_input})
 
                 except KeyboardInterrupt:
                     logging.info("\nExiting...")

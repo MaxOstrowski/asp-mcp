@@ -25,6 +25,7 @@ def enumerate_models(num_models: int, constants: list[str], file_parts: list[tup
     """Enumerate all models for the given constants and filenames.
     At most 10000 models are returned.
     """
+    time_limit=20
     
     num_models = min(num_models, 10000)
     ctl_args = [f"{num_models}"]
@@ -42,4 +43,8 @@ def enumerate_models(num_models: int, constants: list[str], file_parts: list[tup
     control.ground([("base", [])])
     models = []
     result = control.solve(on_model=lambda m: models.append(Model(m)))
+    with control.solve(on_model=lambda m: models.append(Model(m)), async_=True) as handle:
+        handle.wait(time_limit)
+        handle.cancel()
+        result = handle.get()
     return result, models

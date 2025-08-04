@@ -15,6 +15,7 @@ logging.getLogger("mcp").setLevel(logging.WARNING)
 from collections import defaultdict
 from mcp.server.fastmcp import FastMCP
 import clingo
+from clingo.ast import parse_string
 from typing import Dict, Optional, Any
 
 
@@ -143,12 +144,9 @@ def write_virtual_file_to_disk(filename: str) -> dict:
 ### TODO: Also allow to inspect ground rules (maybe sample) of single parts of the file.
 ### TODO: use tree-sitter https://github.com/potassco/tree-sitter-clingo to check syntax with
 ### better messages and to parse the encoding while writing to a file.
-### TODO: add clintest tool to test the encoding
 ### TODO: clingraph support to visualize the encoding
 ### TODO: support for clingodl, clingcon
-### TODO: debugging technique to add error in head of integrity and minimize amount of errors
 ### TODO: check examples in controlled natural language from https://github.com/dodaro/cnl2asp
-### TODO: give more planning structure, create choices, write tests about expected solutions for example, etc...
 
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
@@ -175,11 +173,8 @@ def _check_syntax(content: str) -> str:
 
     def logger(code, msg):
         log_messages.append(f"[{code.name}] {msg}")
-
-    ctl = clingo.Control(logger=logger)
     try:
-        ctl.add("base", [], content)
-        ctl.ground([("base", [])])
+        parse_string(content, lambda x: None, logger=logger)
     except Exception as e:
         error_msg = f"Syntax error: {e}"
         if log_messages:
@@ -265,27 +260,7 @@ def run_tests() -> dict:
 
     def enumerate_at_most_n_models(num_models: int, constants: list[str], file_parts: list[tuple[str, list[int]]]) -> tuple[SolveResult, Model]:
     def enumerate_all_models(constants: list[str], file_parts: list[tuple[str, list[int]]]) -> tuple[SolveResult, list[Model]]:
-    at most 10000 models are returned for performance reasons.
-
-    Here is an example of a test1.py file that checks the n-queens problem:
-
-    ```
-    def test_solution_integrity():
-
-        res, models = enumerate_all_models(["n=8"], [("encoding.lp", [0,1,2])])
-        assert res.satisfiable
-        assert len(models) == 92
-        for model in models:
-            queens: dict[int, int] = {}
-            for atom in model.symbols:
-                if atom.name == "queen":
-                    queens[atom.arguments[0].number] = atom.arguments[1].number
-            assert len(queens) == 8
-            assert len(set(queens.values())) == 8  # all columns must be unique
-            assert len(set(queens.keys())) == 8 # all rows must be unique
-            assert len(set(queens[r] - r for r in queens)) == 8  # all diagonals must be unique
-            assert len(set(queens[r] + r for r in queens)) == 8
-    ```
+    at most 10000 models are returned for performance reasons, 20s timeout.
     """
     result = {
         "tests": [],

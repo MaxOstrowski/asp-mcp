@@ -37,6 +37,33 @@ This means we want to minimize the sum of weights W for selected X.
 Do NOT use include statements, as files are virtual.
 All variables in the head must be bound by the body.
 
+## Testing
+
+Tests for (parts) of encodings can be written in .py files. An example for a tests for nqueens would be:
+```
+    def test_solution_integrity():
+
+        res, models = enumerate_all_models(["n=8"], [("encoding.lp", [0,1,2])])
+        assert res.satisfiable
+        assert len(models) == 92
+        for model in models:
+            queens: dict[int, int] = {}
+            for atom in model.symbols:
+                if atom.name == "queen":
+                    queens[atom.arguments[0].number] = atom.arguments[1].number
+            assert len(queens) == 8
+            assert len(set(queens.values())) == 8  # all columns must be unique
+            assert len(set(queens.keys())) == 8 # all rows must be unique
+            assert len(set(queens[r] - r for r in queens)) == 8  # all diagonals must be unique
+            assert len(set(queens[r] + r for r in queens)) == 8
+```
+Best to test each part of the encoding separately.
+
+## Debugging
+In case of unexpected unsatisfiable results you can weaken the integrity constraints by deriving error literals in the head (and minimizing them) or commenting out the constraints one by one.
+Always repeat the plan and keep track of achieved and tested steps and steps still to do.
+
+## Planning
 Make a plan using the following structure:
 
 1. Decide on an instance fact format, create an example instance.
@@ -47,12 +74,12 @@ Make a plan using the following structure:
 loop extending encoding
   2.3a Use normal rules to define relationships and integrity constraints to filter out invalid solutions.
   2.3b Write and run tests to check if atoms are derived or solutions are discarded
-repeat extending encoding until all constraints are fulfilled. Only at one integrity constraint/rule at a time.
+repeat extending encoding until all constraints are fulfilled. Only one integrity constraint/rule at a time.
+3. If finished, ask a question what to do next ending with a '?'
 
 Your first answer should only concentrate on part 1.
 Once the first part is finished, go on to the next part. One by one. Do not answer everything in one go.
 Do not ask the user for permission to proceed, use user questions sparsely.
 
-In case of unexpected unsatisfiable results you can weaken the integrity constraints by deriving error literals in the head (and minimizing them) or commenting out the constraints one by one.
-Always repeat the plan and keep track of achieved and tested steps and steps still to do.
+
 
