@@ -5,6 +5,7 @@ from asp_llm.llm_client import LLMClient
 import json
 import importlib.resources
 from asp_llm.stdio import AbstractIOHandler, StdIOHandler
+from asp_llm.summarizer import Summarizer
 
 
 class ChatSession:
@@ -14,6 +15,7 @@ class ChatSession:
         self.servers: list[Server] = servers
         self.config: Configuration = config
         self.io: AbstractIOHandler = StdIOHandler()
+        self.summarizer = Summarizer()
 
     async def cleanup_servers(self) -> None:
         """Clean up all servers properly."""
@@ -23,7 +25,7 @@ class ChatSession:
             except Exception as e:
                 logging.warning(f"Warning during final cleanup: {e}")
 
-    async def process_llm_response(self, llm_response: dict) -> list[dict]:
+    async def process_llm_response(self, llm_response: dict, asp_llm: LLMClient) -> list[dict]:
         """
         Process the LLM response and execute OpenAI tool calls if present.
 
@@ -64,13 +66,21 @@ class ChatSession:
                         })
                     break
             else:
-                if tool_name == self.io.input_io_tool_name():
+                if tool_name == self.io.name():
                     # Handle the input tool call
                     user_input = self.io.get_input("".join(arguments["prompt"]) + ": ")
                     tool_result_messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call_id,
                         "content": user_input,
+                    })
+                elif tool_name == self.summarizer.name():
+                    # Handle the input tool call
+                    num = self.summarizer.compress_messages(asp_llm.history)
+                    tool_result_messages.append({
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": f"Messages compressed. {num} messages removed. Now list all files and their contents before proceeding with the next constraint.",
                     })
                 else:
                     # No server found for this tool
@@ -94,7 +104,7 @@ class ChatSession:
                     return
 
             all_tools = []
-            openai_tools = [self.io.input_tool()]
+            openai_tools = [self.io.tool(), self.summarizer.tool()]
             for server in self.servers:
                 tools = await server.list_tools()
                 all_tools.extend(tools)
@@ -112,7 +122,7 @@ class ChatSession:
             while True:
                 try:
                     llm_response = asp_llm.get_response()
-                    tool_result_messages = await self.process_llm_response(llm_response)
+                    tool_result_messages = await self.process_llm_response(llm_response, asp_llm)
 
                     for msg in tool_result_messages:
                         asp_llm.add_message(msg)

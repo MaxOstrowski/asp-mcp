@@ -74,6 +74,7 @@ Make a plan using the following structure:
 loop extending encoding
   2.3a Use normal rules to define relationships and integrity constraints to filter out invalid solutions.
   2.3b Write and run tests to check if atoms are derived or solutions are discarded
+  2.3c If tests pass, call your summary tool and compress your history
 repeat extending encoding until all constraints are fulfilled. Only one integrity constraint/rule at a time.
 3. If finished, ask a question what to do next ending with a '?'
 

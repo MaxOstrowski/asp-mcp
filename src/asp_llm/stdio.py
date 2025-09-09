@@ -100,12 +100,12 @@ class StdIOHandler(AbstractIOHandler):
             lines.append(f"{' ' * indent}{data}")
         return lines
     
-    def input_tool(self) -> dict:
+    def tool(self) -> dict:
         """" get the description of the input io tool"""
         return {
             "type": "function",
             "function": {
-                "name": self.input_io_tool_name(),
+                "name": self.name(),
                 "description": "Ask the user for more information.",
                 "parameters": {
                     "type": "object",
@@ -117,6 +117,6 @@ class StdIOHandler(AbstractIOHandler):
             }
         }
     
-    def input_io_tool_name(self) -> str:
+    def name(self) -> str:
         """Return the name of the input io tool."""
         return "get_user_input"

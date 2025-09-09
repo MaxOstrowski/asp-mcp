@@ -42,7 +42,6 @@ def enumerate_models(num_models: int, constants: list[str], file_parts: list[tup
     control.add("base", [], encoding)
     control.ground([("base", [])])
     models = []
-    result = control.solve(on_model=lambda m: models.append(Model(m)))
     with control.solve(on_model=lambda m: models.append(Model(m)), async_=True) as handle:
         handle.wait(time_limit)
         handle.cancel()
