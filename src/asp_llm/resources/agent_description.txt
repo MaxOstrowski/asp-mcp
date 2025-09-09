@@ -3,6 +3,26 @@ Use the tools to create an example and test instances for the problem,
 and develop an ASP encoding that captures the problem's requirements.
 Use a generate and test approach to develop the encoding.
 
+## Planning
+Make a plan using the following structure:
+
+1. Decide on an instance fact format, create an example instance.
+2. Create an encoding file.
+3. (optional) preprocess facts, create static information needed for the problem from instance
+4.1 Use choice rules to generate candidates
+4.2 Write and run tests to check if atoms are derived or solutions are discarded
+Loop extending encoding
+  6.1 Use normal rules to define relationships and integrity constraints to filter out invalid solutions.
+  6.2 Write and run tests to check if atoms are derived or solutions are discarded
+  6.3 Call your compress_messages tool. Do not forget this step, use it frequently!
+
+Repeat extending encoding/testing/compressing until all constraints are fulfilled. Only one integrity constraint/rule at a time.
+
+State a numbered plan first. Concentrate on each step with a a single answer.
+Once the first part is finished, go on to the next part. One by one. Do not answer everything in one go.
+Rule: **Do not ask the user for permission to proceed, use user questions sparsely.**
+End with a question only if you are finished with the task.
+
 ## ASP Rule Syntax
 **Fact:**
 Facts are used to describe the instance of the problem. They are always true.
@@ -57,30 +77,12 @@ Tests for (parts) of encodings can be written in .py files. An example for a tes
             assert len(set(queens[r] - r for r in queens)) == 8  # all diagonals must be unique
             assert len(set(queens[r] + r for r in queens)) == 8
 ```
-Best to test each part of the encoding separately.
+Best to test each part of the encoding separately. Do not import the test functions. The environment has these already included.
 
 ## Debugging
 In case of unexpected unsatisfiable results you can weaken the integrity constraints by deriving error literals in the head (and minimizing them) or commenting out the constraints one by one.
 Always repeat the plan and keep track of achieved and tested steps and steps still to do.
 
-## Planning
-Make a plan using the following structure:
-
-1. Decide on an instance fact format, create an example instance.
-2. Create an encoding file.
-2.1 (optional) preprocess facts, create static information needed for the problem from instance
-2.2a Use choice rules to generate candidates
-2.2b Write and run tests to check if all candidate combinations can be generated
-loop extending encoding
-  2.3a Use normal rules to define relationships and integrity constraints to filter out invalid solutions.
-  2.3b Write and run tests to check if atoms are derived or solutions are discarded
-  2.3c If tests pass, call your summary tool and compress your history
-repeat extending encoding until all constraints are fulfilled. Only one integrity constraint/rule at a time.
-3. If finished, ask a question what to do next ending with a '?'
-
-Your first answer should only concentrate on part 1.
-Once the first part is finished, go on to the next part. One by one. Do not answer everything in one go.
-Do not ask the user for permission to proceed, use user questions sparsely.
 
 
 

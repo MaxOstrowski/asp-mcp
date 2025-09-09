@@ -54,7 +54,7 @@ class StdIOHandler(AbstractIOHandler):
                 except Exception:
                     pass  # leave content as is if not valid JSON
                 if isinstance(content, dict):
-                    self._print_dict(content, color)
+                    StdIOHandler._print_dict(content, color)
                 else:
                     print(Align.right(Panel(f"{role}: {content}", style=color)))
             else:
@@ -73,28 +73,40 @@ class StdIOHandler(AbstractIOHandler):
             color = self.ROLE_TO_COLOR[role]
             print(Panel(f"{role}: {name}({args_str})", style=color))
         return
+    
+    @staticmethod
+    def dict2string(data: dict) -> str:
+        """Convert a dictionary to a formatted string."""
+        lines = StdIOHandler._print_dict_aux(data)
+        return "\n".join(lines)
 
 
-    def _print_dict(self, data: dict, color: str) -> None:
+    @staticmethod
+    def _print_dict(data: dict, color: str) -> None:
         """Print a dictionary in a formatted way, wrapped in a Panel."""
-        lines = self._print_dict_aux(data)
-        print(Align.right(Panel("\n".join(lines), style=color)))
+        string = StdIOHandler.dict2string(data)
+        print(Align.right(Panel(string, style=color)))
 
-    def _print_dict_aux(self, data, indent: int = 0):
+    @staticmethod
+    def _print_dict_aux(data, indent: int = 0):
         """Helper method to collect lines for a dictionary in a formatted way."""
         lines = []
         if isinstance(data, dict):
             for key, value in data.items():
                 if isinstance(value, dict):
                     lines.append(f"{' ' * indent}{key}:")
-                    lines.extend(self._print_dict_aux(value, indent + 2))
+                    lines.extend(StdIOHandler._print_dict_aux(value, indent + 2))
                 else:
+                    if isinstance(value, str):
+                        value = value.replace("\\n", "\n")
                     lines.append(f"{' ' * indent}{key}: {value}")
         elif isinstance(data, list):
             for value in data:
                 if isinstance(value, dict):
-                    lines.extend(self._print_dict_aux(value, indent + 2))
+                    lines.extend(StdIOHandler._print_dict_aux(value, indent + 2))
                 else:
+                    if isinstance(value, str):
+                        value = value.replace("\\n", "\n")
                     lines.append(f"{' ' * indent}{value}")
         else:
             lines.append(f"{' ' * indent}{data}")

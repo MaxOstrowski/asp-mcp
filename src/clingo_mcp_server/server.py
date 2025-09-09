@@ -62,6 +62,15 @@ vfs = VirtualFileManager()
 
 mcp = FastMCP("clingo")
 
+@mcp.tool()
+def print_all_files() -> dict:
+    """Print all virtual files and their contents."""
+    try:
+        files = vfs.list_files()
+        file_contents = {filename: vfs.get_content(filename) for filename in files}
+        return {"files": file_contents}
+    except Exception as e:
+        return {"error": str(e)}
 
 @mcp.tool()
 def create_virtual_file(filename: str) -> dict:
@@ -261,6 +270,8 @@ def run_tests() -> dict:
     def enumerate_at_most_n_models(num_models: int, constants: list[str], file_parts: list[tuple[str, list[int]]]) -> tuple[SolveResult, Model]:
     def enumerate_all_models(constants: list[str], file_parts: list[tuple[str, list[int]]]) -> tuple[SolveResult, list[Model]]:
     at most 10000 models are returned for performance reasons, 20s timeout.
+
+    This is NO environment-specific setup you need to do. Do not include these functions, just use them.
     """
     result = {
         "tests": [],

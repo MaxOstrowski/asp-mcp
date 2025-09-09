@@ -77,10 +77,11 @@ class ChatSession:
                 elif tool_name == self.summarizer.name():
                     # Handle the input tool call
                     num = self.summarizer.compress_messages(asp_llm.history)
+                    all_files = await self.servers[0].execute_tool("print_all_files", {})
                     tool_result_messages.append({
                         "role": "tool",
                         "tool_call_id": tool_call_id,
-                        "content": f"Messages compressed. {num} messages removed. Now list all files and their contents before proceeding with the next constraint.",
+                        "content": f"Messages compressed. {num} messages removed. Files written and tested so far:\n {StdIOHandler.dict2string(json.loads(all_files))}.",
                     })
                 else:
                     # No server found for this tool
