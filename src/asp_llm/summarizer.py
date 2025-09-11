@@ -1,5 +1,6 @@
 from typing import Any
 
+
 class Summarizer:
     """A tool to compress a list of OpenAI chat messages in place by removing some messages."""
 
@@ -14,7 +15,7 @@ class Summarizer:
             None. The input list is modified in place.
         """
         num = 0
-        last = 3 # ignore your own call + the last messages which are hopefully test calls
+        last = 3  # ignore your own call + the last messages which are hopefully test calls
         # remove all tool call and response messages except the last one
         for i in range(len(messages) - 1 - last, -1, -1):
             if messages[i]["role"] in ["tool"]:
@@ -37,7 +38,7 @@ class Summarizer:
             "function": {
                 "name": Summarizer.name(),
                 "description": "Compresses history of the LLM to improve reasoning.",
-            }
+            },
         }
 
     @staticmethod

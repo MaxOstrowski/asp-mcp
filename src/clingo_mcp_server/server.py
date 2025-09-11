@@ -27,7 +27,6 @@ class VirtualFileManager:
     def create_file(self, name: str) -> None:
         self.files[name] = {}
 
-
     def write_to_file(self, name: str, content: str, index: Optional[int] = None) -> None:
         if name not in self.files:
             self.create_file(name)
@@ -62,6 +61,7 @@ vfs = VirtualFileManager()
 
 mcp = FastMCP("clingo")
 
+
 @mcp.tool()
 def print_all_files() -> dict:
     """Print all virtual files and their contents."""
@@ -71,6 +71,7 @@ def print_all_files() -> dict:
         return {"files": file_contents}
     except Exception as e:
         return {"error": str(e)}
+
 
 @mcp.tool()
 def create_virtual_file(filename: str) -> dict:
@@ -147,15 +148,7 @@ def write_virtual_file_to_disk(filename: str) -> dict:
         return {"result": f"File '{filename}' written to disk."}
     except Exception as e:
         return {"error": str(e)}
-    
 
-
-### TODO: Also allow to inspect ground rules (maybe sample) of single parts of the file.
-### TODO: use tree-sitter https://github.com/potassco/tree-sitter-clingo to check syntax with
-### better messages and to parse the encoding while writing to a file.
-### TODO: clingraph support to visualize the encoding
-### TODO: support for clingodl, clingcon
-### TODO: check examples in controlled natural language from https://github.com/dodaro/cnl2asp
 
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
@@ -176,12 +169,14 @@ def check_syntax(filenames: list[str]) -> dict:
             return {"error": msg}
     return {"result": "Syntax OK"}
 
+
 def _check_syntax(content: str) -> str:
     """Check syntax of a single content string using clingo."""
     log_messages = []
 
     def logger(code, msg):
         log_messages.append(f"[{code.name}] {msg}")
+
     try:
         parse_string(content, lambda x: None, logger=logger)
     except Exception as e:
@@ -210,6 +205,7 @@ def select_statistics(stats: Dict[str, Any]) -> Dict[str, Any]:
     selected_stats["solving"]["choices"] = stats["accu"]["solving"]["solvers"]["choices"]
     selected_stats["solving"]["conflicts"] = stats["accu"]["solving"]["solvers"]["conflicts"]
     return selected_stats
+
 
 @mcp.tool()
 def run_clingo(
@@ -282,6 +278,7 @@ def run_tests() -> dict:
 
     return result
 
+
 def run_test(testfile: str) -> dict:
     """
     Run a single test file and check its output.
@@ -291,7 +288,11 @@ def run_test(testfile: str) -> dict:
     test_code += repr(dict(vfs.files))  # Serialize the virtual file system state
     test_code += "\n\n"
     # load test code from resource file test_gen.py
-    with importlib.resources.files("clingo_mcp_server.resources").joinpath("test_gen.py").open("r", encoding="utf-8") as f:
+    with (
+        importlib.resources.files("clingo_mcp_server.resources")
+        .joinpath("test_gen.py")
+        .open("r", encoding="utf-8") as f
+    ):
         test_code += f.read()
 
     test_code += "\n"
@@ -299,6 +300,7 @@ def run_test(testfile: str) -> dict:
 
     import sys
     import io
+
     with tempfile.TemporaryDirectory() as tmpdirname:
         test_file = os.path.join(tmpdirname, f"test_file_{uuid.uuid4().hex}.py")
         with open(test_file, "w") as f:
@@ -322,12 +324,12 @@ def run_test(testfile: str) -> dict:
         }
         if exit_code == 0:
             result["status"] = "success"
-            
+
     return result
 
 
 def main():
-    #run_tests()
+    # run_tests()
     mcp.run()
 
 

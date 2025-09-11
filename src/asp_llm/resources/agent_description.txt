@@ -27,6 +27,7 @@ End with a question only if you are finished with the task.
 **Fact:**
 Facts are used to describe the instance of the problem. They are always true.
 Example: `parent(alice, bob).` means Alice is a parent of Bob.
+Facts do not use upper case variables but lower case terms.
 
 **Choice Rule:**
 A choice rule allows an atom to be true or false based on the body.

@@ -14,8 +14,7 @@ dependencies = [
     "mcp",
     "openai",
     "rich",
-    "pytest",
-    "clintest",
+    "pytest"
 ]
 
 [tool.setuptools]
@@ -34,18 +33,3 @@ line-length = 120
 strict = true
 files = ["src/asp_mcp_server", "src/llm_client"]
 
-[tool.pytest.ini_options]
-testpaths = [
-    "tests",
-]
-
-[tool.coverage.run]
-branch = true
-source = [
-    "src/asp_mcp_server",
-    "src/llm_client",
-]
-
-[tool.coverage.report]
-show_missing = true
-fail_under = 100

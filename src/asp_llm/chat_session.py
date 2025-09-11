@@ -8,6 +8,16 @@ from asp_llm.stdio import AbstractIOHandler, StdIOHandler
 from asp_llm.summarizer import Summarizer
 
 
+def is_question(msg: str) -> bool:
+    """Check if the message is a question"""
+    if msg is None:
+        return False
+    if len(msg) >= 3 and "?" in msg[-3:]:
+        return True
+    if "let me know" in msg.lower():
+        return True
+    return False
+
 class ChatSession:
     """Orchestrates the interaction between user, LLM, and tools."""
 
@@ -52,48 +62,58 @@ class ChatSession:
                     try:
                         result = await server.execute_tool(tool_name, arguments)
                         # Prepare the tool result message for OpenAI API
-                        tool_result_messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "content": result,
-                        })
+                        tool_result_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": result,
+                            }
+                        )
                     except Exception as e:
                         logging.error(f"Error executing tool {tool_name}: {e}")
-                        tool_result_messages.append({
-                            "role": "tool",
-                            "tool_call_id": tool_call_id,
-                            "content": json.dumps({"error": str(e)}),
-                        })
+                        tool_result_messages.append(
+                            {
+                                "role": "tool",
+                                "tool_call_id": tool_call_id,
+                                "content": json.dumps({"error": str(e)}),
+                            }
+                        )
                     break
             else:
                 if tool_name == self.io.name():
                     # Handle the input tool call
                     user_input = self.io.get_input("".join(arguments["prompt"]) + ": ")
-                    tool_result_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": user_input,
-                    })
+                    tool_result_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": user_input,
+                        }
+                    )
                 elif tool_name == self.summarizer.name():
                     # Handle the input tool call
                     num = self.summarizer.compress_messages(asp_llm.history)
                     all_files = await self.servers[0].execute_tool("print_all_files", {})
-                    tool_result_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": f"Messages compressed. {num} messages removed. Files written and tested so far:\n {StdIOHandler.dict2string(json.loads(all_files))}.",
-                    })
+                    tool_result_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": f"Messages compressed. {num} messages removed. Files written and tested so far:\n {StdIOHandler.dict2string(json.loads(all_files))}",
+                        }
+                    )
                 else:
                     # No server found for this tool
                     logging.error(f"No server found with tool: {tool_name}")
-                    tool_result_messages.append({
-                        "role": "tool",
-                        "tool_call_id": tool_call_id,
-                        "content": json.dumps({"error": f"No server found with tool: {tool_name}"}),
-                    })
+                    tool_result_messages.append(
+                        {
+                            "role": "tool",
+                            "tool_call_id": tool_call_id,
+                            "content": json.dumps({"error": f"No server found with tool: {tool_name}"}),
+                        }
+                    )
         return tool_result_messages
 
-    async def start(self) -> None:
+    async def start(self, initial_file: str | None = None) -> None:
         """Main chat session handler."""
         try:
             for server in self.servers:
@@ -111,12 +131,24 @@ class ChatSession:
                 all_tools.extend(tools)
                 openai_tools.extend(await server.openai_tools())
 
-            with importlib.resources.files("asp_llm.resources").joinpath("agent_description.txt").open("r", encoding="utf-8") as f:
+            with (
+                importlib.resources.files("asp_llm.resources")
+                .joinpath("agent_description.txt")
+                .open("r", encoding="utf-8") as f
+            ):
                 system_message = f.read()
 
             asp_llm = LLMClient(self.io, system_message, self.config, openai_tools)
 
-            user_input = self.io.get_input("You: ")
+            if initial_file:
+                try:
+                    with open(initial_file, "r", encoding="utf-8") as f:
+                        user_input = f.read()
+                except Exception as e:
+                    logging.error(f"Could not read initial file: {e}")
+                    user_input = self.io.get_input("You: ")
+            else:
+                user_input = self.io.get_input("You: ")
 
             asp_llm.add_message({"role": "user", "content": user_input})
 
@@ -128,7 +160,7 @@ class ChatSession:
                     for msg in tool_result_messages:
                         asp_llm.add_message(msg)
                     msg = llm_response.choices[0].message.content
-                    if msg and len(msg) >= 3 and '?' in msg[-3:]:
+                    if is_question(msg):
                         user_input = self.io.get_input("You: ")
                         asp_llm.add_message({"role": "user", "content": user_input})
 

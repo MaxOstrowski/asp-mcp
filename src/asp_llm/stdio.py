@@ -73,13 +73,12 @@ class StdIOHandler(AbstractIOHandler):
             color = self.ROLE_TO_COLOR[role]
             print(Panel(f"{role}: {name}({args_str})", style=color))
         return
-    
+
     @staticmethod
     def dict2string(data: dict) -> str:
         """Convert a dictionary to a formatted string."""
         lines = StdIOHandler._print_dict_aux(data)
         return "\n".join(lines)
-
 
     @staticmethod
     def _print_dict(data: dict, color: str) -> None:
@@ -111,9 +110,9 @@ class StdIOHandler(AbstractIOHandler):
         else:
             lines.append(f"{' ' * indent}{data}")
         return lines
-    
+
     def tool(self) -> dict:
-        """" get the description of the input io tool"""
+        """ " get the description of the input io tool"""
         return {
             "type": "function",
             "function": {
@@ -121,14 +120,12 @@ class StdIOHandler(AbstractIOHandler):
                 "description": "Ask the user for more information.",
                 "parameters": {
                     "type": "object",
-                    "properties": {
-                        "prompt": {"type": "string", "description": "The question to ask the user."}
-                    },
-                    "required": ["prompt"]
-                }
-            }
+                    "properties": {"prompt": {"type": "string", "description": "The question to ask the user."}},
+                    "required": ["prompt"],
+                },
+            },
         }
-    
+
     def name(self) -> str:
         """Return the name of the input io tool."""
         return "get_user_input"
