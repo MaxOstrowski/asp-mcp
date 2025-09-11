@@ -1,0 +1,2 @@
+include src/asp_llm/resources/agent_description.txt
+include src/clingo_mcp_server/resources/test_gen.py
