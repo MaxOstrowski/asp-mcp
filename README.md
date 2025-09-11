@@ -17,6 +17,7 @@ pip install -e .
 ## Environment Variables
 
 Some tools and server components require environment variables to be set.
+create a .env file with the following content:
 
 ```bash
 AZURE_OPENAI_KEY=your-key-here

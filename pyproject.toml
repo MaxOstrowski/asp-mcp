@@ -14,7 +14,8 @@ dependencies = [
     "mcp",
     "openai",
     "rich",
-    "pytest"
+    "pytest",
+    "dotenv",
 ]
 
 [tool.setuptools]
