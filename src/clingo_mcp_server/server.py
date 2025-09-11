@@ -153,12 +153,6 @@ def write_virtual_file_to_disk(filename: str) -> dict:
 @mcp.tool()
 def check_syntax(filenames: list[str]) -> dict:
     """Check syntax of a virtual file using clingo."""
-    log_messages = []
-
-    def logger(code, msg):
-        log_messages.append(f"[{code.name}] {msg}")
-
-    ctl = clingo.Control(logger=logger)
     for filename in filenames:
         content = vfs.get_content(filename)
         if content is None:
