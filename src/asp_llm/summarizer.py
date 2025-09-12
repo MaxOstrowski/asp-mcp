@@ -7,27 +7,50 @@ class Summarizer:
     @staticmethod
     def compress_messages(messages: list[dict[str, Any]]) -> int:
         """
-        Compresses the list of OpenAI chat messages in place by removing some messages.
-        The removal logic should be implemented by the user.
-        Args:
-            messages: List of OpenAI chat message dicts (each with keys like 'role', 'content', etc.)
-        Returns:
-            None. The input list is modified in place.
+        Compresses the list of OpenAI chat messages in place by removing tool_calls and tool role answers.
+        Keeps first and last message. If the 3rd last message contains a test tool call, keeps it and its answer.
         """
         num = 0
-        last = 3  # ignore your own call + the last messages which are hopefully test calls
-        # remove all tool call and response messages except the last one
-        for i in range(len(messages) - 1 - last, -1, -1):
-            if messages[i]["role"] in ["tool"]:
-                del messages[i]
-                num += 1
-                continue
-            if "content" in messages[i] and messages[i]["content"] is None:
-                del messages[i]
-                num += 1
-                continue
-            if "tool_calls" in messages[i]:
-                del messages[i]["tool_calls"]
+        if len(messages) <= 2:
+            return num
+        
+        # list of ids of all messages containing tool calls (except first and last)
+        tool_call_message_ids = [i for i, msg in enumerate(messages[1:-1]) if "tool_calls" in msg]
+        tool_answer_message_ids = [i for i, msg in enumerate(messages[1:-1]) if msg["role"] == "tool"]
+
+        # last message id and tool call index for the function name run_tests
+        last_msg_id = None
+        tool_call_id = None
+        last_tool_call_msg_id = None
+        for i in reversed(tool_call_message_ids):
+            if any(tc.get("function", {}).get("name", "") == "run_tests" for tc in messages[i]["tool_calls"]):
+                last_msg_id = i
+                tool_call_id = [tc["id"] for tc in messages[i]["tool_calls"] if tc.get("function", {}).get("name", "") == "run_tests"][0]
+                for j in reversed(tool_answer_message_ids):
+                    if messages[j].get("tool_call_id") == tool_call_id:
+                        last_tool_call_msg_id = j
+
+                break
+
+        if last_msg_id is not None:
+            # remove message from deletion list
+            tool_call_message_ids.remove(last_msg_id)
+            tool_call_message_ids.remove(last_tool_call_msg_id)
+
+            # remove all tool calls except the run_tests call from the last_msg_id message
+            msgs = messages[last_msg_id]["tool_calls"]
+            del messages[last_msg_id]["tool_calls"][tool_call_id]
+            
+        # delete all tool call messages and their answers
+        to_delete_ids = sorted(tool_call_message_ids + tool_answer_message_ids, reverse=True)
+        for i in to_delete_ids:
+            msg = messages[i]
+            if "content" not in msg or msg["content"] is None:
+                messages[i]
+            else:
+                msg["tool_calls"] = []
+            num += 1
+        
         return num
 
     @staticmethod

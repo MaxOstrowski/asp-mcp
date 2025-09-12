@@ -39,6 +39,8 @@ def enumerate_models(
     time_limit = 20
 
     num_models = min(num_models, 10000)
+    if num_models == 0:
+        num_models = 10000
     ctl_args = [f"{num_models}"]
     for p in constants:
         ctl_args.extend(["--const", str(p)])
