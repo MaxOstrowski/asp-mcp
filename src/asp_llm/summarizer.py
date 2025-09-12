@@ -15,40 +15,45 @@ class Summarizer:
             return num
         
         # list of ids of all messages containing tool calls (except first and last)
-        tool_call_message_ids = [i for i, msg in enumerate(messages[1:-1]) if "tool_calls" in msg]
-        tool_answer_message_ids = [i for i, msg in enumerate(messages[1:-1]) if msg["role"] == "tool"]
+        tool_call_message_ids = [i for i, msg in enumerate(messages[:-1]) if "tool_calls" in msg and msg["tool_calls"]]
+        tool_answer_message_ids = [i for i, msg in enumerate(messages[:-1]) if msg["role"] == "tool"]
+
 
         # last message id and tool call index for the function name run_tests
         last_msg_id = None
         tool_call_id = None
         last_tool_call_msg_id = None
+        tool_call_index = None
         for i in reversed(tool_call_message_ids):
             if any(tc.get("function", {}).get("name", "") == "run_tests" for tc in messages[i]["tool_calls"]):
                 last_msg_id = i
-                tool_call_id = [tc["id"] for tc in messages[i]["tool_calls"] if tc.get("function", {}).get("name", "") == "run_tests"][0]
+                # get the index where the any hits
+                tool_call_index = next(idx for idx, tc in enumerate(messages[i]["tool_calls"]) if tc.get("function", {}).get("name", "") == "run_tests")
+                tool_call_id = messages[i]["tool_calls"][tool_call_index]["id"]
                 for j in reversed(tool_answer_message_ids):
                     if messages[j].get("tool_call_id") == tool_call_id:
                         last_tool_call_msg_id = j
+                        break
 
                 break
 
         if last_msg_id is not None:
             # remove message from deletion list
             tool_call_message_ids.remove(last_msg_id)
-            tool_call_message_ids.remove(last_tool_call_msg_id)
+            tool_answer_message_ids.remove(last_tool_call_msg_id)
 
             # remove all tool calls except the run_tests call from the last_msg_id message
-            msgs = messages[last_msg_id]["tool_calls"]
-            del messages[last_msg_id]["tool_calls"][tool_call_id]
+            messages[last_msg_id]["tool_calls"] = [messages[last_msg_id]["tool_calls"][tool_call_index]]
             
         # delete all tool call messages and their answers
         to_delete_ids = sorted(tool_call_message_ids + tool_answer_message_ids, reverse=True)
         for i in to_delete_ids:
-            msg = messages[i]
-            if "content" not in msg or msg["content"] is None:
-                messages[i]
-            else:
-                msg["tool_calls"] = []
+            if i in tool_answer_message_ids:
+                del messages[i]
+            elif i in tool_call_message_ids:
+                del messages[i]["tool_calls"]
+                if "content" not in messages[i] or not messages[i]["content"]:
+                    del messages[i]
             num += 1
         
         return num

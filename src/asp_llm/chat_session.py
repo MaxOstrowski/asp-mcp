@@ -91,14 +91,8 @@ class ChatSession:
                         }
                     )
                 elif tool_name == self.summarizer.name():
-                    # Handle the input tool call
-                    with open("last_clean.txt", "w", encoding="utf-8") as f:
-                        f.write("--- History before clean ---\n")
-                        f.write(json.dumps(asp_llm.history, indent=2))
+                    # Handle the summarizer tool call
                     num = self.summarizer.compress_messages(asp_llm.history)
-                    with open("last_clean.txt", "a", encoding="utf-8") as f:
-                        f.write("\n--- History after clean ---\n")
-                        f.write(json.dumps(asp_llm.history, indent=2))
                     all_files = await self.servers[0].execute_tool("print_all_files", {})
                     tool_result_messages.append(
                         {
