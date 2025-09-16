@@ -23,7 +23,7 @@ package-dir = {"" = "src"}
 packages = ["clingo_mcp_server", "asp_llm"]
 
 [tool.setuptools.package-data]
-"asp_llm.resources" = ["agent_description.txt"]
+"asp_llm.resources" = ["agent_description.txt", "servers_config.json"]
 "clingo_mcp_server.resources" = ["test_gen.py"]
 
 [tool.black]

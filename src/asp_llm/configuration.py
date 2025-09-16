@@ -1,6 +1,6 @@
 import json
 import os
-from typing import Any
+from typing import Any, IO
 from dotenv import load_dotenv
 
 
@@ -27,11 +27,11 @@ class Configuration:
                 break
 
     @staticmethod
-    def load_config(file_path: str) -> dict[str, Any]:
+    def load_config(file: IO[str]) -> dict[str, Any]:
         """Load server configuration from JSON file.
 
         Args:
-            file_path: Path to the JSON configuration file.
+            file: File-like object containing the JSON configuration.
 
         Returns:
             Dict containing server configuration.
@@ -40,5 +40,4 @@ class Configuration:
             FileNotFoundError: If configuration file doesn't exist.
             JSONDecodeError: If configuration file is invalid JSON.
         """
-        with open(file_path, "r") as f:
-            return json.load(f)
+        return json.load(file)

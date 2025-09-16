@@ -4,6 +4,7 @@ import logging
 from asp_llm.chat_session import ChatSession
 from asp_llm.configuration import Configuration
 from asp_llm.server import Server
+import importlib.resources
 
 # Configure logging
 logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s - %(name)s - %(message)s")
@@ -12,10 +13,11 @@ logging.basicConfig(level=logging.WARNING, format="%(asctime)s - %(levelname)s -
 async def _main_async(initial_file: str | None = None) -> None:
     """Initialize and run the chat session."""
     config = Configuration()
-    server_config = config.load_config("servers_config.json")
-    servers = [Server(name, srv_config) for name, srv_config in server_config["mcpServers"].items()]
-    chat_session = ChatSession(servers, config)
-    await chat_session.start(initial_file)
+    with importlib.resources.files("asp_llm.resources").joinpath("servers_config.json").open("r", encoding="utf-8") as f:
+        server_config = config.load_config(f)
+        servers = [Server(name, srv_config) for name, srv_config in server_config["mcpServers"].items()]
+        chat_session = ChatSession(servers, config)
+        await chat_session.start(initial_file)
 
 
 def main():
