@@ -1,11 +1,11 @@
 import logging
-from asp_llm.configuration import Configuration
-from asp_llm.server import Server
-from asp_llm.llm_client import LLMClient
+from asp_mcp_client.configuration import Configuration
+from asp_mcp_client.server import Server
+from asp_mcp_client.llm_client import LLMClient
 import json
 import importlib.resources
-from asp_llm.stdio import AbstractIOHandler, StdIOHandler
-from asp_llm.summarizer import Summarizer
+from asp_mcp_client.stdio import AbstractIOHandler, StdIOHandler
+from asp_mcp_client.summarizer import Summarizer
 
 
 def is_question(msg: str) -> bool:
@@ -35,7 +35,7 @@ class ChatSession:
             except Exception as e:
                 logging.warning(f"Warning during final cleanup: {e}")
 
-    async def process_llm_response(self, llm_response: dict, asp_llm: LLMClient) -> list[dict]:
+    async def process_llm_response(self, llm_response: dict, asp_mcp_client: LLMClient) -> list[dict]:
         """
         Process the LLM response and execute OpenAI tool calls if present.
 
@@ -92,7 +92,7 @@ class ChatSession:
                     )
                 elif tool_name == self.summarizer.name():
                     # Handle the summarizer tool call
-                    num = self.summarizer.compress_messages(asp_llm.history)
+                    num = self.summarizer.compress_messages(asp_mcp_client.history)
                     all_files = await self.servers[0].execute_tool("print_all_files", {})
                     tool_result_messages.append(
                         {
@@ -132,13 +132,13 @@ class ChatSession:
                 openai_tools.extend(await server.openai_tools())
 
             with (
-                importlib.resources.files("asp_llm.resources")
+                importlib.resources.files("asp_mcp_client.resources")
                 .joinpath("agent_description.txt")
                 .open("r", encoding="utf-8") as f
             ):
                 system_message = f.read()
 
-            asp_llm = LLMClient(self.io, system_message, self.config, openai_tools)
+            asp_mcp_client = LLMClient(self.io, system_message, self.config, openai_tools)
 
             if initial_file:
                 try:
@@ -150,23 +150,23 @@ class ChatSession:
             else:
                 user_input = self.io.get_input("You: ")
 
-            asp_llm.add_message({"role": "user", "content": user_input})
+            asp_mcp_client.add_message({"role": "user", "content": user_input})
 
             while True:
                 try:
-                    llm_response = asp_llm.get_response()
-                    tool_result_messages = await self.process_llm_response(llm_response, asp_llm)
+                    llm_response = asp_mcp_client.get_response()
+                    tool_result_messages = await self.process_llm_response(llm_response, asp_mcp_client)
 
                     for msg in tool_result_messages:
-                        asp_llm.add_message(msg)
+                        asp_mcp_client.add_message(msg)
                     msg = llm_response.choices[0].message.content
                     if is_question(msg):
                         user_input = self.io.get_input("You: ")
-                        asp_llm.add_message({"role": "user", "content": user_input})
+                        asp_mcp_client.add_message({"role": "user", "content": user_input})
 
                     # if not tool_result_messages:
                     #     user_input = self.io.get_input("You: ")
-                    #     asp_llm.add_message({"role": "user", "content": user_input})
+                    #     asp_mcp_client.add_message({"role": "user", "content": user_input})
 
                 except KeyboardInterrupt:
                     logging.info("\nExiting...")

@@ -1,10 +1,10 @@
 [project.scripts]
-clingo-mcp-server = "clingo_mcp_server.server:main"
-asp-llm-client = "asp_llm.main:main"
+asp-mcp-server = "asp_mcp_server.server:main"
+asp-mcp-client = "asp_mcp_client.main:main"
 [project]
-name = "ASP_MCP_Agent"
+name = "ASP_MCP"
 version = "0.1.0"
-description = "Agent project with ASP MCP server and LLM client"
+description = "ASP MCP server and client"
 authors = [
     { name = "Max Ostrowski", email = "max.ostrowski@potassco.com" }
 ]
@@ -20,11 +20,11 @@ dependencies = [
 
 [tool.setuptools]
 package-dir = {"" = "src"}
-packages = ["clingo_mcp_server", "asp_llm"]
+packages = ["asp_mcp_server", "asp_mcp_client"]
 
 [tool.setuptools.package-data]
-"asp_llm.resources" = ["agent_description.txt", "servers_config.json"]
-"clingo_mcp_server.resources" = ["test_gen.py"]
+"asp_mcp_client.resources" = ["agent_description.txt", "servers_config.json"]
+"asp_mcp_server.resources" = ["test_gen.py"]
 
 [tool.black]
 line-length = 120
@@ -32,5 +32,5 @@ line-length = 120
 
 [tool.mypy]
 strict = true
-files = ["src/asp_mcp_server", "src/llm_client"]
+files = ["src/asp_mcp_server", "src/asp_mcp_client"]
 

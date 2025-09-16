@@ -283,7 +283,7 @@ def run_test(testfile: str) -> dict:
     test_code += "\n\n"
     # load test code from resource file test_gen.py
     with (
-        importlib.resources.files("clingo_mcp_server.resources")
+        importlib.resources.files("asp_mcp_server.resources")
         .joinpath("test_gen.py")
         .open("r", encoding="utf-8") as f
     ):

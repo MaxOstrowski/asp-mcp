@@ -1,11 +1,11 @@
 import logging
 import httpx
-from asp_llm.configuration import Configuration
+from asp_mcp_client.configuration import Configuration
 from openai import AzureOpenAI
 from openai.types.chat import ChatCompletion
 import os
 
-from asp_llm.stdio import AbstractIOHandler
+from asp_mcp_client.stdio import AbstractIOHandler
 
 
 class LLMClient:

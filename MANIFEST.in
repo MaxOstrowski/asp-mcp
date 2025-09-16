@@ -1,3 +1,3 @@
-include src/asp_llm/resources/agent_description.txt
-include src/asp_llm/resources/servers_config.json
-include src/clingo_mcp_server/resources/test_gen.py
+include src/asp_mcp_client/resources/agent_description.txt
+include src/asp_mcp_client/resources/servers_config.json
+include src/asp_mcp_server/resources/test_gen.py

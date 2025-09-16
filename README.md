@@ -1,4 +1,4 @@
-# Multiagent ASP MCP Agent
+# ASP MCP Client/Server
 
 ## Installation
 
@@ -34,7 +34,7 @@ Newer models will probably work too.
 After installation, you can start the client from the command line:
 
 ```bash
-asp-llm-client [input_file]
+asp-mcp-client [input_file]
 ```
 
 You can either give a description of your problem or type it by hand.
