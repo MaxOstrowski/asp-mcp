@@ -30,15 +30,16 @@ class Configuration:
             os.path.join(os.getcwd(), ".env"),
             os.path.join(os.path.expanduser("~"), ".env"),
         ]
-        # precache required env vars
-        for var in self.REQUIRED_ENV_VARS:
-            if var in os.environ:
-                setattr(self, var, os.environ[var])
 
         for path in env_paths:
             if os.path.isfile(path):
                 load_dotenv(dotenv_path=path)
                 break
+        
+        # precache required env vars
+        for var in self.REQUIRED_ENV_VARS:
+            if var in os.environ:
+                setattr(self, var, os.environ[var])
 
     @staticmethod
     def load_config(file: IO[str]) -> dict[str, Any]:
